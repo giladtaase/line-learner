@@ -1,0 +1,76 @@
+{
+  "app": {
+    "title": "Line Learner"
+  },
+  "nav": {
+    "scripts": "Scripts",
+    "settings": "Settings"
+  },
+  "scripts": {
+    "empty": "No scripts yet. Upload one to get started.",
+    "upload": "Upload script",
+    "uploadHint": "Upload a .txt or .docx file, or paste your script below.",
+    "pasteLabel": "Or paste script text",
+    "pastePlaceholder": "Paste your script here...",
+    "titleLabel": "Script title",
+    "titlePlaceholder": "e.g. Romeo and Juliet - Act 2",
+    "parse": "Parse script",
+    "parsing": "Parsing...",
+    "open": "Open",
+    "delete": "Delete",
+    "myCharacter": "My character",
+    "chooseCharacter": "Choose which character you play",
+    "save": "Save script",
+    "entries": "{{count}} lines parsed"
+  },
+  "editor": {
+    "title": "Review & correct",
+    "hint": "Fix any misdetected characters or lines before saving. Each row is one line or stage direction.",
+    "character": "Character",
+    "text": "Text",
+    "type": "Type",
+    "line": "Line",
+    "direction": "Direction",
+    "addRow": "Add row",
+    "removeRow": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
+  },
+  "player": {
+    "readthrough": "Full read-through",
+    "play": "Play",
+    "pause": "Pause",
+    "stop": "Stop",
+    "next": "Next",
+    "yourLine": "Your line",
+    "yourTurn": "Your turn to say this line",
+    "otherLinesMode": "Other characters' lines",
+    "speak": "Speak",
+    "display": "Display text",
+    "continue": "Continue",
+    "noScriptSelected": "Select a script to begin practicing.",
+    "chooseYourCharacterFirst": "Choose your character first in the script's settings."
+  },
+  "settings": {
+    "title": "Settings",
+    "uiLanguage": "App language",
+    "defaultOtherLinesMode": "Default: other characters' lines",
+    "defaultMyLineInputMode": "Default: your line input",
+    "transcriptionProvider": "Transcription engine",
+    "whisper": "Whisper (OpenAI API)",
+    "webspeech": "Browser (free, Chrome/Safari)",
+    "apiKey": "OpenAI API key",
+    "apiKeyHint": "Stored only on this device. Required when using Whisper.",
+    "ttsRate": "Speech speed",
+    "leniency": "Correction leniency",
+    "leniencyHint": "Higher = stricter grading of your recorded/typed lines.",
+    "speak": "Speak",
+    "type": "Type"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "back": "Back",
+    "loading": "Loading..."
+  }
+}

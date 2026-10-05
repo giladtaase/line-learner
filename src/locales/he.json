@@ -1,0 +1,76 @@
+{
+  "app": {
+    "title": "לומד התפקיד"
+  },
+  "nav": {
+    "scripts": "תסריטים",
+    "settings": "הגדרות"
+  },
+  "scripts": {
+    "empty": "עדיין אין תסריטים. העלה תסריט כדי להתחיל.",
+    "upload": "העלאת תסריט",
+    "uploadHint": "העלה קובץ ‎.txt‎ או ‎.docx‎, או הדבק את התסריט למטה.",
+    "pasteLabel": "או הדבק את טקסט התסריט",
+    "pastePlaceholder": "הדבק כאן את התסריט...",
+    "titleLabel": "כותרת התסריט",
+    "titlePlaceholder": "לדוגמה: רומיאו ויוליה - מערכה 2",
+    "parse": "נתח תסריט",
+    "parsing": "מנתח...",
+    "open": "פתח",
+    "delete": "מחק",
+    "myCharacter": "הדמות שלי",
+    "chooseCharacter": "בחר את הדמות שאתה משחק",
+    "save": "שמור תסריט",
+    "entries": "{{count}} שורות זוהו"
+  },
+  "editor": {
+    "title": "סקירה ותיקון",
+    "hint": "תקן דמויות או שורות שזוהו בטעות לפני השמירה. כל שורה היא טקסט דיבור אחד או הוראת במה.",
+    "character": "דמות",
+    "text": "טקסט",
+    "type": "סוג",
+    "line": "טקסט",
+    "direction": "הוראת במה",
+    "addRow": "הוסף שורה",
+    "removeRow": "הסר",
+    "moveUp": "הזז למעלה",
+    "moveDown": "הזז למטה"
+  },
+  "player": {
+    "readthrough": "קריאה מלאה",
+    "play": "נגן",
+    "pause": "השהה",
+    "stop": "עצור",
+    "next": "הבא",
+    "yourLine": "השורה שלך",
+    "yourTurn": "תורך לומר את השורה הזו",
+    "otherLinesMode": "שורות הדמויות האחרות",
+    "speak": "השמעה קולית",
+    "display": "הצגת טקסט",
+    "continue": "המשך",
+    "noScriptSelected": "בחר תסריט כדי להתחיל להתאמן.",
+    "chooseYourCharacterFirst": "בחר קודם את הדמות שלך בהגדרות התסריט."
+  },
+  "settings": {
+    "title": "הגדרות",
+    "uiLanguage": "שפת האפליקציה",
+    "defaultOtherLinesMode": "ברירת מחדל: שורות הדמויות האחרות",
+    "defaultMyLineInputMode": "ברירת מחדל: קלט השורה שלך",
+    "transcriptionProvider": "מנוע תמלול",
+    "whisper": "Whisper (API של OpenAI)",
+    "webspeech": "דפדפן (חינם, Chrome/Safari)",
+    "apiKey": "מפתח API של OpenAI",
+    "apiKeyHint": "נשמר רק במכשיר זה. נדרש בעת שימוש ב-Whisper.",
+    "ttsRate": "מהירות דיבור",
+    "leniency": "רמת סובלנות בתיקון",
+    "leniencyHint": "ערך גבוה יותר = בדיקה מחמירה יותר של השורות המוקלטות/מוקלדות שלך.",
+    "speak": "דיבור",
+    "type": "הקלדה"
+  },
+  "common": {
+    "cancel": "ביטול",
+    "confirm": "אישור",
+    "back": "חזרה",
+    "loading": "טוען..."
+  }
+}
