@@ -7,8 +7,10 @@ export interface ScriptEntry {
   id: string;
   order: number;
   type: EntryType;
-  /** Character name, only present for type 'line'. */
+  /** Character name as written in the script (may be a joint cue like "ALON and OREN"), only present for type 'line'. */
   character?: string;
+  /** Individual character names parsed out of `character` (e.g. ["ALON", "OREN"]). A line "belongs" to you if your character is in this list, even when others share the cue. */
+  characters?: string[];
   /** The text of the line or the stage direction. */
   text: string;
 }

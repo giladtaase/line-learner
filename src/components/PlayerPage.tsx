@@ -26,11 +26,31 @@ export default function PlayerPage() {
     ensureVoicesLoaded();
   }, [id]);
 
+  function isMine(entry: Script['entries'][number] | undefined): boolean {
+    if (!entry || entry.type !== 'line' || !script?.myCharacter) return false;
+    return entry.characters
+      ? entry.characters.includes(script.myCharacter)
+      : entry.character === script.myCharacter;
+  }
+
   const currentEntry = script?.entries[index];
-  const isMyLine =
-    currentEntry?.type === 'line' && currentEntry.character === script?.myCharacter;
+  const isMyLine = isMine(currentEntry);
 
   const advance = useCallback(() => {
+    setIndex((i) => Math.min(i + 1, (script?.entries.length ?? 1) - 1));
+  }, [script]);
+
+  const goPrev = useCallback(() => {
+    stopRequested.current = true;
+    stopSpeaking();
+    setPlaying(false);
+    setIndex((i) => Math.max(i - 1, 0));
+  }, []);
+
+  const goNext = useCallback(() => {
+    stopRequested.current = true;
+    stopSpeaking();
+    setPlaying(false);
     setIndex((i) => Math.min(i + 1, (script?.entries.length ?? 1) - 1));
   }, [script]);
 
@@ -41,7 +61,7 @@ export default function PlayerPage() {
     let i = index;
     while (i < script.entries.length && !stopRequested.current) {
       const entry = script.entries[i];
-      const mine = entry.type === 'line' && entry.character === script.myCharacter;
+      const mine = isMine(entry);
       setIndex(i);
       if (mine) {
         // Pause here; the user records/says their line and taps Continue.
@@ -121,7 +141,7 @@ export default function PlayerPage() {
       <div className="bg-white rounded-lg shadow p-6 min-h-[160px] flex flex-col justify-center">
         {script.entries.map((entry, i) => {
           if (i !== index) return null;
-          const mine = entry.type === 'line' && entry.character === script.myCharacter;
+          const mine = isMine(entry);
           if (entry.type === 'direction') {
             return (
               <p key={entry.id} className="italic text-slate-500 text-center">
@@ -147,7 +167,15 @@ export default function PlayerPage() {
         })}
       </div>
 
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex items-center justify-center gap-3 flex-wrap">
+        <button
+          onClick={goPrev}
+          disabled={index === 0}
+          className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-40"
+          title={t('player.previous') ?? ''}
+        >
+          ◀ {t('player.previous')}
+        </button>
         {!playing && !isMyLine && (
           <button
             onClick={handlePlay}
@@ -171,6 +199,14 @@ export default function PlayerPage() {
         )}
         <button onClick={handleStop} className="border px-5 py-2 rounded hover:bg-slate-50">
           {t('player.stop')}
+        </button>
+        <button
+          onClick={goNext}
+          disabled={!script || index >= script.entries.length - 1}
+          className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-40"
+          title={t('player.next') ?? ''}
+        >
+          {t('player.next')} ▶
         </button>
       </div>
 

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
+import { recomputeEntryCharacters } from '../lib/scriptParser';
 import type { Script, ScriptEntry } from '../types';
 
 export default function ScriptEditorPage() {
@@ -25,31 +26,23 @@ export default function ScriptEditorPage() {
     });
   }, [id]);
 
-  function recomputeCharacters(next: ScriptEntry[]) {
-    const set = new Set<string>();
-    next.forEach((e) => {
-      if (e.type === 'line' && e.character) set.add(e.character);
-    });
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+  function applyRecompute(next: ScriptEntry[]): ScriptEntry[] {
+    const { entries: resolved, characters: list } = recomputeEntryCharacters(next);
     setCharacters(list);
     if (!list.includes(myCharacter)) setMyCharacter(list[0] ?? '');
+    return resolved;
   }
 
   function updateEntry(index: number, patch: Partial<ScriptEntry>) {
     setEntries((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], ...patch };
-      recomputeCharacters(next);
-      return next;
+      return applyRecompute(next);
     });
   }
 
   function removeEntry(index: number) {
-    setEntries((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      recomputeCharacters(next);
-      return next;
-    });
+    setEntries((prev) => applyRecompute(prev.filter((_, i) => i !== index)));
   }
 
   function moveEntry(index: number, direction: -1 | 1) {
@@ -72,17 +65,18 @@ export default function ScriptEditorPage() {
         character: myCharacter || characters[0] || '',
         text: ''
       });
-      return next.map((e, i) => ({ ...e, order: i }));
+      return applyRecompute(next.map((e, i) => ({ ...e, order: i })));
     });
   }
 
   async function handleSave() {
     if (!script) return;
-    const normalized = entries.map((e, i) => ({ ...e, order: i }));
+    const { entries: resolved, characters: list } = recomputeEntryCharacters(entries);
+    const normalized = resolved.map((e, i) => ({ ...e, order: i }));
     const updated: Script = {
       ...script,
       entries: normalized,
-      characters,
+      characters: list,
       myCharacter: myCharacter || undefined,
       updatedAt: Date.now()
     };

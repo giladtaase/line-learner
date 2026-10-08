@@ -42,6 +42,7 @@
     "pause": "Pause",
     "stop": "Stop",
     "next": "Next",
+    "previous": "Previous",
     "yourLine": "Your line",
     "yourTurn": "Your turn to say this line",
     "otherLinesMode": "Other characters' lines",
