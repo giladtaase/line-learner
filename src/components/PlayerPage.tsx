@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { db, getSettings, recordAttempt } from '../lib/db';
 import { speak, stopSpeaking, ensureVoicesLoaded } from '../lib/tts';
-import { gradeAttempt } from '../lib/fuzzyMatch';
+import { gradeAttempt, stripInlineDirections } from '../lib/fuzzyMatch';
 import {
   createTranscriptionController,
   type TranscriptionController
@@ -12,6 +12,26 @@ import {
 import type { Script, OtherLinesMode, AppSettings } from '../types';
 
 type RecordingState = 'idle' | 'recording' | 'processing';
+
+/** Renders a dialogue line with any inline (...)/[...] stage directions shown
+ *  in a muted italic style, making clear they're acting notes, not words to
+ *  actually speak (and thus not part of what the recording grader checks). */
+function LineWithInlineDirections({ text }: { text: string }) {
+  const parts = text.split(/([(\[][^)\]]*[)\]])/g).filter((p) => p.length > 0);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^[(\[]/.test(part) ? (
+          <span key={i} className="italic text-slate-400">
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
 
 interface GradeResult {
   transcript: string;
@@ -155,7 +175,7 @@ export default function PlayerPage() {
         return;
       }
       if (entry.type === 'line' && otherLinesMode === 'speak') {
-        await speak(entry.text, script.language, settings?.ttsRate ?? 1);
+        await speak(stripInlineDirections(entry.text), script.language, settings?.ttsRate ?? 1);
       } else {
         // Give a moment to read displayed text/direction before advancing.
         await new Promise((r) => setTimeout(r, entry.type === 'direction' ? 700 : 1400));
@@ -246,10 +266,12 @@ export default function PlayerPage() {
               <p className="text-sm font-semibold text-brand-700">{entry.character}</p>
               {mine ? (
                 <p className="text-lg bg-amber-50 border border-amber-200 rounded p-3">
-                  {entry.text}
+                  <LineWithInlineDirections text={entry.text} />
                 </p>
               ) : otherLinesMode === 'display' ? (
-                <p className="text-lg">{entry.text}</p>
+                <p className="text-lg">
+                  <LineWithInlineDirections text={entry.text} />
+                </p>
               ) : (
                 <p className="text-slate-400 italic">🔊 …</p>
               )}
@@ -309,6 +331,11 @@ export default function PlayerPage() {
                       <p className="text-xs mt-1 opacity-80">
                         {t('player.youSaid')}: “{gradeResult.transcript || '—'}”
                       </p>
+                      {!gradeResult.passed && (
+                        <p className="text-xs mt-1 opacity-80">
+                          {t('player.expected')}: “{stripInlineDirections(currentEntry?.text ?? '')}”
+                        </p>
+                      )}
                       <button
                         onClick={() => {
                           setGradeResult(null);

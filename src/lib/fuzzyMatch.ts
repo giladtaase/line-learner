@@ -6,10 +6,20 @@
  */
 
 const NIQQUD = /[\u0591-\u05C7]/g;
-const PUNCTUATION = /[.,!?;:'"()\u05F3\u05F4\-—–]/g;
+const PUNCTUATION = /[.,!?;:'"\u05F3\u05F4\-—–\u2026]/g;
+// Inline stage/acting directions embedded within a dialogue line, e.g.
+// "(מצטרף אליהן)... עם חברים היינו שרים" or "(crossing to the window) I can't believe it.".
+// These describe blocking/acting notes, not words the actor actually speaks,
+// so they must be stripped before comparing to what was said aloud.
+const INLINE_DIRECTIONS = /[(\[][^)\]]*[)\]]/g;
+
+/** Removes bracketed/parenthesized inline stage directions from a line of dialogue. */
+export function stripInlineDirections(text: string): string {
+  return text.replace(INLINE_DIRECTIONS, ' ').replace(/\s+/g, ' ').trim();
+}
 
 export function normalizeForComparison(text: string): string {
-  return text
+  return stripInlineDirections(text)
     .replace(NIQQUD, '')
     .replace(PUNCTUATION, '')
     .toLowerCase()
@@ -35,15 +45,38 @@ function levenshtein(a: string[], b: string[]): number {
   return dp[a.length][b.length];
 }
 
-/** Returns a similarity ratio between 0 (no match) and 1 (identical), token-based. */
-export function similarityRatio(expected: string, actual: string): number {
-  const a = normalizeForComparison(expected).split(' ').filter(Boolean);
-  const b = normalizeForComparison(actual).split(' ').filter(Boolean);
+function tokenSimilarity(a: string[], b: string[]): number {
   if (a.length === 0 && b.length === 0) return 1;
   if (a.length === 0 || b.length === 0) return 0;
   const distance = levenshtein(a, b);
   const maxLen = Math.max(a.length, b.length);
   return 1 - distance / maxLen;
+}
+
+/**
+ * Returns a similarity ratio between 0 (no match) and 1 (identical). Combines
+ * two comparison strategies and takes the better score:
+ *  - word/token-based (tolerant of small wording/order differences)
+ *  - character-based with spaces removed (tolerant of words being merged or
+ *    split differently between the script text and the spoken transcript —
+ *    e.g. "וחבריםהיינו" vs "וחברים היינו" — which can happen due to source
+ *    formatting quirks or how speech recognition breaks up words, and
+ *    shouldn't be treated as a missed word).
+ */
+export function similarityRatio(expected: string, actual: string): number {
+  const normExpected = normalizeForComparison(expected);
+  const normActual = normalizeForComparison(actual);
+
+  const tokenScore = tokenSimilarity(
+    normExpected.split(' ').filter(Boolean),
+    normActual.split(' ').filter(Boolean)
+  );
+
+  const charsA = normExpected.replace(/\s+/g, '').split('');
+  const charsB = normActual.replace(/\s+/g, '').split('');
+  const charScore = tokenSimilarity(charsA, charsB);
+
+  return Math.max(tokenScore, charScore);
 }
 
 export function gradeAttempt(
