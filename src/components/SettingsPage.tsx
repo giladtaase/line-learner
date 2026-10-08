@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSettings, saveSettings } from '../lib/db';
+import { isWebSpeechSupported } from '../lib/transcription';
 import type { AppSettings } from '../types';
 
 export default function SettingsPage() {
@@ -86,6 +87,9 @@ export default function SettingsPage() {
             <option value="whisper">{t('settings.whisper')}</option>
             <option value="webspeech">{t('settings.webspeech')}</option>
           </select>
+          {settings.transcriptionProvider === 'webspeech' && !isWebSpeechSupported() && (
+            <p className="text-xs text-red-600 mt-1">{t('settings.webspeechUnsupported')}</p>
+          )}
         </div>
 
         {settings.transcriptionProvider === 'whisper' && (

@@ -38,3 +38,7 @@ export async function getSettings(): Promise<AppSettings> {
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await db.settings.put(settings);
 }
+
+export async function recordAttempt(attempt: LineAttempt): Promise<void> {
+  await db.attempts.put(attempt);
+}
