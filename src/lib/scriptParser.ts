@@ -208,11 +208,46 @@ export function parseScript(rawText: string): ParseResult {
 export async function extractTextFromFile(file: File): Promise<string> {
   const name = file.name.toLowerCase();
   if (name.endsWith('.docx')) {
-    const mammoth = await import('mammoth');
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
+    return extractTextFromDocx(file);
   }
   // Plain text (.txt) and anything else: read as UTF-8 text.
   return file.text();
+}
+
+/**
+ * Extracts text from a .docx file while preserving manual line breaks
+ * (Shift+Enter, i.e. <w:br/> in the document XML).
+ *
+ * mammoth's extractRawText() does NOT insert anything for these in-paragraph
+ * line breaks, which silently glues the text before and after them together
+ * (e.g. "...הבריון" + "היה..." becomes "...הבריוןהיה..."). This is extremely
+ * common in scripts, where a character's dialogue visually wraps onto a new
+ * line without starting a whole new paragraph/entry. convertToHtml(), by
+ * contrast, renders each <w:br/> as an actual <br> tag, so we use that and
+ * convert the HTML back to plain text ourselves. A <br> is converted to a
+ * single space (it's a mid-paragraph wrap, part of the same spoken line, so
+ * it must not split into a separate script entry), while actual paragraph
+ * boundaries (</p>, </li>) become real newlines since those do represent
+ * distinct lines/cues.
+ */
+async function extractTextFromDocx(file: File): Promise<string> {
+  const mammoth = await import('mammoth');
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.convertToHtml({ arrayBuffer });
+  const html = result.value;
+
+  return html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
