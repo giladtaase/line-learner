@@ -82,6 +82,11 @@ export default function PlayerPage() {
   const currentEntry = script?.entries[index];
   const isMyLine = isMine(currentEntry);
 
+  const sceneIndices = (script?.entries ?? [])
+    .map((e, i) => (e.type === 'scene' ? i : -1))
+    .filter((i) => i >= 0);
+  const currentSceneNumber = sceneIndices.filter((i) => i <= index).length; // 1-based, 0 if before first scene
+
   const advance = useCallback(() => {
     setIndex((i) => Math.min(i + 1, (script?.entries.length ?? 1) - 1));
   }, [script]);
@@ -106,6 +111,18 @@ export default function PlayerPage() {
     setPlaying(false);
     setIndex(i);
     setShowJumpTo(false);
+  }
+
+  function goPrevScene() {
+    const earlierScenes = sceneIndices.filter((i) => i < index);
+    if (earlierScenes.length === 0) return;
+    jumpToIndex(earlierScenes[earlierScenes.length - 1]);
+  }
+
+  function goNextScene() {
+    const laterScene = sceneIndices.find((i) => i > index);
+    if (laterScene === undefined) return;
+    jumpToIndex(laterScene);
   }
 
   async function handleStartRecording() {
@@ -177,8 +194,9 @@ export default function PlayerPage() {
       if (entry.type === 'line' && otherLinesMode === 'speak') {
         await speak(stripInlineDirections(entry.text), script.language, settings?.ttsRate ?? 1);
       } else {
-        // Give a moment to read displayed text/direction before advancing.
-        await new Promise((r) => setTimeout(r, entry.type === 'direction' ? 700 : 1400));
+        // Give a moment to read displayed text/direction/scene heading before advancing.
+        const pause = entry.type === 'direction' ? 700 : entry.type === 'scene' ? 1000 : 1400;
+        await new Promise((r) => setTimeout(r, pause));
       }
       i++;
     }
@@ -231,7 +249,35 @@ export default function PlayerPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-semibold">{script.title}</h2>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-3 text-sm flex-wrap">
+          {sceneIndices.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={goPrevScene}
+                disabled={sceneIndices.filter((i) => i < index).length === 0}
+                className="border px-2 py-1.5 rounded hover:bg-slate-50 disabled:opacity-40"
+                title={t('player.previousScene') ?? ''}
+              >
+                ◀◀
+              </button>
+              <span className="text-xs text-slate-500 px-1">
+                {currentSceneNumber > 0
+                  ? t('player.sceneCounter', {
+                      current: currentSceneNumber,
+                      total: sceneIndices.length
+                    })
+                  : t('player.beforeFirstScene')}
+              </span>
+              <button
+                onClick={goNextScene}
+                disabled={sceneIndices.find((i) => i > index) === undefined}
+                className="border px-2 py-1.5 rounded hover:bg-slate-50 disabled:opacity-40"
+                title={t('player.nextScene') ?? ''}
+              >
+                ▶▶
+              </button>
+            </div>
+          )}
           <button
             onClick={() => setShowJumpTo(true)}
             className="border px-3 py-1.5 rounded hover:bg-slate-50"
@@ -254,6 +300,16 @@ export default function PlayerPage() {
         {script.entries.map((entry, i) => {
           if (i !== index) return null;
           const mine = isMine(entry);
+          if (entry.type === 'scene') {
+            return (
+              <p
+                key={entry.id}
+                className="text-center font-bold text-brand-800 text-xl uppercase tracking-wide"
+              >
+                {entry.text}
+              </p>
+            );
+          }
           if (entry.type === 'direction') {
             return (
               <p key={entry.id} className="italic text-slate-500 text-center">
@@ -426,9 +482,13 @@ export default function PlayerPage() {
                   onClick={() => jumpToIndex(i)}
                   className={`w-full text-start px-4 py-2 border-b hover:bg-slate-50 ${
                     i === index ? 'bg-brand-50' : ''
-                  }`}
+                  } ${entry.type === 'scene' ? 'bg-brand-100 sticky top-0 z-10' : ''}`}
                 >
-                  {entry.type === 'direction' ? (
+                  {entry.type === 'scene' ? (
+                    <span className="font-bold text-brand-800 uppercase tracking-wide text-sm">
+                      {entry.text}
+                    </span>
+                  ) : entry.type === 'direction' ? (
                     <span className="italic text-slate-500 text-sm">{entry.text}</span>
                   ) : (
                     <span className="text-sm">

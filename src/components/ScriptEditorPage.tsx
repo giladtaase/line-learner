@@ -115,7 +115,12 @@ export default function ScriptEditorPage() {
 
       <div className="space-y-2">
         {entries.map((entry, index) => (
-          <div key={entry.id} className="bg-white rounded-lg shadow p-3 flex gap-2 items-start">
+          <div
+            key={entry.id}
+            className={`rounded-lg shadow p-3 flex gap-2 items-start ${
+              entry.type === 'scene' ? 'bg-brand-50 border border-brand-200' : 'bg-white'
+            }`}
+          >
             <div className="flex flex-col gap-1 w-28 shrink-0">
               <select
                 value={entry.type}
@@ -123,13 +128,15 @@ export default function ScriptEditorPage() {
                   updateEntry(index, {
                     type: e.target.value as ScriptEntry['type'],
                     character:
-                      e.target.value === 'line' ? entry.character || characters[0] : undefined
+                      e.target.value === 'line' ? entry.character || characters[0] : undefined,
+                    characters: e.target.value === 'line' ? entry.characters : undefined
                   })
                 }
                 className="border rounded px-1 py-1 text-xs"
               >
                 <option value="line">{t('editor.line')}</option>
                 <option value="direction">{t('editor.direction')}</option>
+                <option value="scene">{t('editor.scene')}</option>
               </select>
               {entry.type === 'line' && (
                 <input

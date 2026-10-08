@@ -15,6 +15,19 @@ import type { ScriptEntry, Language } from '../types';
 
 const DIRECTION_WRAPPERS = /^[(\[].*[)\]]$/;
 
+// Scene/act heading lines, e.g. "תמונה 1", "תמונה א'", "מערכה שנייה", "SCENE 1",
+// "ACT TWO", "Scene 3: The garden". Matched as a standalone line (optionally
+// followed by a title after a colon/dash), case-insensitive for English,
+// and with or without Hebrew geresh (') on letter-numerals.
+const SCENE_HEADING =
+  /^(?:(?:תמונה|מערכה|פרק)\s*[\u0590-\u05FF'׳\d]*|(?:scene|act)\s*[\divxlcIVXLC]*)\s*[:.\-–]?\s*(.*)$/i;
+
+function isSceneHeading(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length > 60) return false; // scene headings are short; avoid matching long dialogue
+  return SCENE_HEADING.test(trimmed) && /^(?:תמונה|מערכה|פרק|scene|act)/i.test(trimmed);
+}
+
 // A character cue line looks like "ROMEO:", "JULIET.", "יוליה:", "רומיאו." etc.
 // Allow letters (incl. Hebrew), spaces, dots, numbers (e.g. "GUARD 1"), and hyphens in the name.
 const CUE_LINE = /^([A-Za-z\u0590-\u05FF][A-Za-z\u0590-\u05FF '.-]{0,40}?)\s*[:.]\s*(.*)$/;
@@ -115,14 +128,28 @@ export interface ParseResult {
   characters: string[];
 }
 
+type RawKind = 'line' | 'direction' | 'scene';
+
 /** First pass: walk the text and pull out every raw cue name + its inline text, without resolving joint cues yet. */
-function extractRawCues(lines: string[]): { rawName: string; text: string; isDirection: boolean }[] {
-  const result: { rawName: string; text: string; isDirection: boolean }[] = [];
+function extractRawCues(
+  lines: string[]
+): { rawName: string; text: string; kind: RawKind }[] {
+  const result: { rawName: string; text: string; kind: RawKind }[] = [];
   let pendingCharacter: string | null = null;
 
   for (const rawLine of lines) {
+    if (isSceneHeading(rawLine)) {
+      result.push({ rawName: '', text: rawLine.trim(), kind: 'scene' });
+      pendingCharacter = null;
+      continue;
+    }
+
     if (DIRECTION_WRAPPERS.test(rawLine)) {
-      result.push({ rawName: '', text: rawLine.replace(/^[(\[]|[)\]]$/g, ''), isDirection: true });
+      result.push({
+        rawName: '',
+        text: rawLine.replace(/^[(\[]|[)\]]$/g, ''),
+        kind: 'direction'
+      });
       pendingCharacter = null;
       continue;
     }
@@ -134,7 +161,7 @@ function extractRawCues(lines: string[]): { rawName: string; text: string; isDir
       const looksLikeName = name.split(/\s+/).length <= 4 && isAllCapsName(name);
       if (looksLikeName) {
         if (rest.length > 0) {
-          result.push({ rawName: name, text: rest, isDirection: false });
+          result.push({ rawName: name, text: rest, kind: 'line' });
           pendingCharacter = null;
         } else {
           pendingCharacter = name;
@@ -144,11 +171,11 @@ function extractRawCues(lines: string[]): { rawName: string; text: string; isDir
     }
 
     if (pendingCharacter) {
-      result.push({ rawName: pendingCharacter, text: rawLine, isDirection: false });
+      result.push({ rawName: pendingCharacter, text: rawLine, kind: 'line' });
       continue;
     }
 
-    result.push({ rawName: '', text: rawLine, isDirection: true });
+    result.push({ rawName: '', text: rawLine, kind: 'direction' });
   }
 
   return result;
@@ -168,7 +195,7 @@ export function parseScript(rawText: string): ParseResult {
   // can be validated against real, independently-confirmed character names.
   const standaloneNames = new Set<string>();
   for (const cue of rawCues) {
-    if (cue.isDirection || !cue.rawName) continue;
+    if (cue.kind !== 'line' || !cue.rawName) continue;
     if (splitJointCandidates(cue.rawName).length === 1) {
       standaloneNames.add(cue.rawName);
     }
@@ -179,7 +206,11 @@ export function parseScript(rawText: string): ParseResult {
   let order = 0;
 
   for (const cue of rawCues) {
-    if (cue.isDirection) {
+    if (cue.kind === 'scene') {
+      entries.push({ id: uuid(), order: order++, type: 'scene', text: cue.text.trim() });
+      continue;
+    }
+    if (cue.kind === 'direction') {
       if (cue.text.trim()) {
         entries.push({ id: uuid(), order: order++, type: 'direction', text: cue.text.trim() });
       }

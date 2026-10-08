@@ -1,6 +1,6 @@
 export type Language = 'en' | 'he';
 
-export type EntryType = 'line' | 'direction';
+export type EntryType = 'line' | 'direction' | 'scene';
 
 /** A single parsed entry in a script: either a spoken line or a stage direction. */
 export interface ScriptEntry {
