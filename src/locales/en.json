@@ -22,8 +22,8 @@
     "chooseCharacter": "Choose which character(s) you play (tap to select, multiple allowed)",
     "save": "Save script",
     "entries": "{{count}} lines parsed",
-    "export": "Export",
-    "exportHint": "Download this script as a file you can share with friends, so they can use it without re-editing.",
+    "export": "Share / Export",
+    "exportHint": "Share this script as a file (via WhatsApp, email, etc.) or download it, so friends can use it without re-editing.",
     "importTitle": "Import a shared script",
     "importHint": "Import a .linelearner.json file someone shared with you (e.g. a friend's already-corrected script) to skip re-editing it yourself."
   },

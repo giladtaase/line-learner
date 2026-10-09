@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
 import { recomputeEntryCharacters, getMyCharacters } from '../lib/scriptParser';
-import { downloadScriptFile } from '../lib/scriptFile';
+import { downloadScriptFile, shareScriptFile } from '../lib/scriptFile';
 import type { Script, ScriptEntry } from '../types';
 
 export default function ScriptEditorPage() {
@@ -96,15 +96,17 @@ export default function ScriptEditorPage() {
     navigate(`/scripts/${script.id}/play`);
   }
 
-  function handleExport() {
+  async function handleExport() {
     if (!script) return;
     const { entries: resolved, characters: list } = recomputeEntryCharacters(entries);
     const normalized = resolved.map((e, i) => ({ ...e, order: i }));
-    downloadScriptFile({
-      ...script,
-      entries: normalized,
-      characters: list
-    });
+    const exportScript = { ...script, entries: normalized, characters: list };
+    const shared = await shareScriptFile(exportScript);
+    if (!shared) {
+      // Not supported on this device/browser (typically desktop) — fall
+      // back to a plain file download instead.
+      downloadScriptFile(exportScript);
+    }
   }
 
   if (!script) {

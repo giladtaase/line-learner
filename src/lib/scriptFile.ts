@@ -106,16 +106,60 @@ export function scriptFileToNewScript(file: ScriptFile, id: string): Script {
   };
 }
 
+function scriptFileName(script: Script): string {
+  const safeTitle = script.title.trim().replace(/[\\/:*?"<>|]+/g, '_') || 'script';
+  return `${safeTitle}.linelearner.json`;
+}
+
 export function downloadScriptFile(script: Script): void {
   const json = serializeScriptFile(script);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const safeTitle = script.title.trim().replace(/[\\/:*?"<>|]+/g, '_') || 'script';
-  a.download = `${safeTitle}.linelearner.json`;
+  a.download = scriptFileName(script);
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Whether the Web Share API can share actual files (not just text/links) on
+ *  this device/browser — true on most mobile browsers (iOS Safari, Android
+ *  Chrome), generally false on desktop browsers, where downloadScriptFile's
+ *  plain download is used as a fallback instead. */
+export function canShareScriptFile(): boolean {
+  if (typeof navigator === 'undefined' || !navigator.canShare) return false;
+  try {
+    const probe = new File(['test'], 'test.json', { type: 'application/json' });
+    return navigator.canShare({ files: [probe] });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Shares the script file via the device's native share sheet (WhatsApp,
+ * email, AirDrop, etc. depending on platform) when supported. Returns true if
+ * the native share sheet was invoked, false if the caller should fall back to
+ * downloadScriptFile instead (e.g. unsupported browser, or sharing files
+ * specifically isn't supported even though navigator.share exists).
+ */
+export async function shareScriptFile(script: Script): Promise<boolean> {
+  if (!canShareScriptFile()) return false;
+  const json = serializeScriptFile(script);
+  const file = new File([json], scriptFileName(script), { type: 'application/json' });
+  try {
+    await navigator.share({
+      files: [file],
+      title: script.title,
+      text: `${script.title} — Line Learner script`
+    });
+    return true;
+  } catch (err) {
+    // AbortError means the user simply cancelled the share sheet — not a
+    // real failure, so don't fall back to a download in that case.
+    if (err instanceof DOMException && err.name === 'AbortError') return true;
+    return false;
+  }
 }

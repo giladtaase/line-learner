@@ -7,6 +7,7 @@ import { db } from '../lib/db';
 import { parseScript, extractTextFromFile, getMyCharacters } from '../lib/scriptParser';
 import {
   downloadScriptFile,
+  shareScriptFile,
   parseScriptFile,
   scriptFileToNewScript,
   ScriptFileParseError
@@ -72,8 +73,13 @@ export default function ScriptsListPage() {
     await db.attempts.where('scriptId').equals(id).delete();
   }
 
-  function handleExport(script: Script) {
-    downloadScriptFile(script);
+  async function handleExport(script: Script) {
+    const shared = await shareScriptFile(script);
+    if (!shared) {
+      // Not supported on this device/browser (typically desktop) — fall
+      // back to a plain file download instead.
+      downloadScriptFile(script);
+    }
   }
 
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
