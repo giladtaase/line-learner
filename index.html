@@ -2,10 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1e293b" />
     <title>Line Learner</title>
+    <script>
+      // Companion to public/404.html: if a direct load/refresh on a deep
+      // client-side route got redirected here via the 404 page's script,
+      // restore the originally-requested path so React Router can render it.
+      (function () {
+        var redirectPath = sessionStorage.getItem('spa-redirect-path');
+        if (redirectPath) {
+          sessionStorage.removeItem('spa-redirect-path');
+          if (redirectPath !== location.pathname + location.search + location.hash) {
+            history.replaceState(null, '', redirectPath);
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

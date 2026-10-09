@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Line Learner</title>
+    <!--
+      GitHub Pages is a static host with no server-side rewrites, so a direct
+      navigation or refresh on a client-side route (e.g. /line-learner/scripts/x/play)
+      returns this 404 page instead of index.html. This script stashes the
+      intended path in sessionStorage and redirects to the app's root, which
+      then restores it (see the small script in index.html) so React Router
+      can take over and render the correct page.
+    -->
+    <script>
+      sessionStorage.setItem('spa-redirect-path', location.pathname + location.search + location.hash);
+      location.replace('/line-learner/');
+    </script>
+  </head>
+  <body></body>
+</html>
