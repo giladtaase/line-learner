@@ -46,6 +46,8 @@
     "previous": "Previous",
     "yourLine": "Your line",
     "yourTurn": "Your turn to say this line",
+    "showLine": "Show my line",
+    "hideLine": "Hide my line",
     "otherLinesMode": "Other characters' lines",
     "speak": "Speak",
     "display": "Display text",

@@ -56,6 +56,10 @@ export default function PlayerPage() {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
+  // Your own line's text is hidden by default on every new line, forcing you
+  // to actually recall it before peeking — otherwise there's no real
+  // memorization practice happening.
+  const [revealMyLine, setRevealMyLine] = useState(false);
   const stopRequested = useRef(false);
   const transcriptionRef = useRef<TranscriptionController | null>(null);
 
@@ -74,6 +78,7 @@ export default function PlayerPage() {
     setGradeResult(null);
     setRecordingError(null);
     setRecordingState('idle');
+    setRevealMyLine(false);
   }, [index]);
 
   const myCharacters = script ? getMyCharacters(script) : [];
@@ -339,9 +344,21 @@ export default function PlayerPage() {
             <div key={entry.id} className="text-center space-y-2">
               <p className="text-sm font-semibold text-brand-700">{entry.character}</p>
               {mine ? (
-                <p className="text-lg bg-amber-50 border border-amber-200 rounded p-3">
-                  <LineWithInlineDirections text={entry.text} />
-                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
+                  {revealMyLine ? (
+                    <p className="text-lg">
+                      <LineWithInlineDirections text={entry.text} />
+                    </p>
+                  ) : (
+                    <p className="text-lg text-amber-300 select-none tracking-widest">••••••••••</p>
+                  )}
+                  <button
+                    onClick={() => setRevealMyLine((r) => !r)}
+                    className="text-xs font-medium text-amber-700 border border-amber-300 rounded px-3 py-1 hover:bg-amber-100"
+                  >
+                    {revealMyLine ? `🙈 ${t('player.hideLine')}` : `👁 ${t('player.showLine')}`}
+                  </button>
+                </div>
               ) : otherLinesMode === 'display' ? (
                 <p className="text-lg">
                   <LineWithInlineDirections text={entry.text} />
