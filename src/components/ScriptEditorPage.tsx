@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
 import { recomputeEntryCharacters, getMyCharacters } from '../lib/scriptParser';
+import { downloadScriptFile } from '../lib/scriptFile';
 import type { Script, ScriptEntry } from '../types';
 
 export default function ScriptEditorPage() {
@@ -95,6 +96,17 @@ export default function ScriptEditorPage() {
     navigate(`/scripts/${script.id}/play`);
   }
 
+  function handleExport() {
+    if (!script) return;
+    const { entries: resolved, characters: list } = recomputeEntryCharacters(entries);
+    const normalized = resolved.map((e, i) => ({ ...e, order: i }));
+    downloadScriptFile({
+      ...script,
+      entries: normalized,
+      characters: list
+    });
+  }
+
   if (!script) {
     return <p className="text-slate-500">{t('common.loading')}</p>;
   }
@@ -112,6 +124,13 @@ export default function ScriptEditorPage() {
             className="border px-4 py-2 rounded hover:bg-slate-50"
           >
             {t('common.back')}
+          </button>
+          <button
+            onClick={handleExport}
+            className="border px-4 py-2 rounded hover:bg-slate-50"
+            title={t('scripts.exportHint') ?? ''}
+          >
+            {t('scripts.export')}
           </button>
           <button
             onClick={handleSave}
@@ -225,6 +244,13 @@ export default function ScriptEditorPage() {
       <div className="flex justify-end gap-2 pb-6">
         <button onClick={() => navigate('/')} className="border px-4 py-2 rounded hover:bg-slate-50">
           {t('common.back')}
+        </button>
+        <button
+          onClick={handleExport}
+          className="border px-4 py-2 rounded hover:bg-slate-50"
+          title={t('scripts.exportHint') ?? ''}
+        >
+          {t('scripts.export')}
         </button>
         <button
           onClick={handleSave}

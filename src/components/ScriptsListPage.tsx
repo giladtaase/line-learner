@@ -5,6 +5,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
 import { parseScript, extractTextFromFile, getMyCharacters } from '../lib/scriptParser';
+import {
+  downloadScriptFile,
+  parseScriptFile,
+  scriptFileToNewScript,
+  ScriptFileParseError
+} from '../lib/scriptFile';
 import type { Script } from '../types';
 
 export default function ScriptsListPage() {
@@ -16,6 +22,7 @@ export default function ScriptsListPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   async function createFromText(rawText: string, fallbackTitle: string) {
     setBusy(true);
@@ -63,6 +70,35 @@ export default function ScriptsListPage() {
   async function handleDelete(id: string) {
     await db.scripts.delete(id);
     await db.attempts.where('scriptId').equals(id).delete();
+  }
+
+  function handleExport(script: Script) {
+    downloadScriptFile(script);
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const text = await file.text();
+      const scriptFile = parseScriptFile(text);
+      const newScript = scriptFileToNewScript(scriptFile, uuid());
+      await db.scripts.put(newScript);
+      navigate(`/scripts/${newScript.id}/edit`);
+    } catch (err) {
+      setError(
+        err instanceof ScriptFileParseError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      );
+    } finally {
+      setBusy(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
   }
 
   return (
@@ -114,6 +150,19 @@ export default function ScriptsListPage() {
         {error && <p className="text-red-600 text-sm">{error}</p>}
       </section>
 
+      <section className="bg-white rounded-lg shadow p-4 space-y-2">
+        <h2 className="font-semibold text-lg">{t('scripts.importTitle')}</h2>
+        <p className="text-sm text-slate-600">{t('scripts.importHint')}</p>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleImportFile}
+          disabled={busy}
+          className="text-sm"
+        />
+      </section>
+
       <section className="space-y-2">
         {(!scripts || scripts.length === 0) && (
           <p className="text-slate-500 text-sm">{t('scripts.empty')}</p>
@@ -146,6 +195,13 @@ export default function ScriptsListPage() {
                 className="text-sm border px-3 py-1.5 rounded hover:bg-slate-50"
               >
                 {t('editor.title')}
+              </button>
+              <button
+                onClick={() => handleExport(script)}
+                className="text-sm border px-3 py-1.5 rounded hover:bg-slate-50"
+                title={t('scripts.exportHint') ?? ''}
+              >
+                {t('scripts.export')}
               </button>
               <button
                 onClick={() => handleDelete(script.id)}
