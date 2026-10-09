@@ -23,7 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiLanguage: 'en',
   defaultOtherLinesMode: 'speak',
   defaultMyLineInputMode: 'speak',
-  transcriptionProvider: 'whisper',
+  transcriptionProvider: 'webspeech',
   ttsRate: 1,
   leniencyThreshold: 0.55
 };
@@ -35,18 +35,34 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // moved the slider to some other value.
 const LEGACY_DEFAULT_LENIENCY = 0.72;
 
+// The original default transcription provider shipped with the app (before
+// it was switched to the free browser engine as the default). Used the same
+// way as above: only auto-migrates users still on the old default, leaving
+// anyone who deliberately chose Whisper untouched.
+const LEGACY_DEFAULT_PROVIDER: AppSettings['transcriptionProvider'] = 'whisper';
+
 export async function getSettings(): Promise<AppSettings> {
   const existing = await db.settings.get('settings');
   if (!existing) {
     await db.settings.put(DEFAULT_SETTINGS);
     return DEFAULT_SETTINGS;
   }
-  if (existing.leniencyThreshold === LEGACY_DEFAULT_LENIENCY) {
-    const migrated = { ...existing, leniencyThreshold: DEFAULT_SETTINGS.leniencyThreshold };
-    await db.settings.put(migrated);
-    return migrated;
+  let migrated = existing;
+  let changed = false;
+  if (migrated.leniencyThreshold === LEGACY_DEFAULT_LENIENCY) {
+    migrated = { ...migrated, leniencyThreshold: DEFAULT_SETTINGS.leniencyThreshold };
+    changed = true;
   }
-  return existing;
+  if (migrated.transcriptionProvider === LEGACY_DEFAULT_PROVIDER && !migrated.openAiApiKey) {
+    // Only auto-switch away from Whisper if no API key was ever entered —
+    // someone who already set one up clearly chose Whisper deliberately.
+    migrated = { ...migrated, transcriptionProvider: DEFAULT_SETTINGS.transcriptionProvider };
+    changed = true;
+  }
+  if (changed) {
+    await db.settings.put(migrated);
+  }
+  return migrated;
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
