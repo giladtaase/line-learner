@@ -58,6 +58,7 @@
     "nextScene": "Next scene",
     "sceneCounter": "Scene {{current}} / {{total}}",
     "beforeFirstScene": "Before scene 1",
+    "backToScenes": "Back to scene list",
     "record": "Record my line",
     "recording": "Recording... tap to stop",
     "processing": "Transcribing...",

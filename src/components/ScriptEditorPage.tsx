@@ -90,9 +90,25 @@ export default function ScriptEditorPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">{script.title}</h2>
-        <p className="text-sm text-slate-600 mt-1">{t('editor.hint')}</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl font-semibold">{script.title}</h2>
+          <p className="text-sm text-slate-600 mt-1">{t('editor.hint')}</p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => navigate('/')}
+            className="border px-4 py-2 rounded hover:bg-slate-50"
+          >
+            {t('common.back')}
+          </button>
+          <button
+            onClick={handleSave}
+            className="bg-brand-600 text-white px-4 py-2 rounded hover:bg-brand-700"
+          >
+            {t('scripts.save')}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">

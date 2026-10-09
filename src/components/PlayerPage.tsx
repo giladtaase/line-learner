@@ -49,6 +49,9 @@ export default function PlayerPage() {
   const [playing, setPlaying] = useState(false);
   const [otherLinesMode, setOtherLinesMode] = useState<OtherLinesMode>('speak');
   const [showJumpTo, setShowJumpTo] = useState(false);
+  // Index into sceneIndices of the scene currently expanded in the Jump-to
+  // picker, or null while showing the top-level scene list.
+  const [jumpToSceneIdx, setJumpToSceneIdx] = useState<number | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
@@ -111,6 +114,19 @@ export default function PlayerPage() {
     setPlaying(false);
     setIndex(i);
     setShowJumpTo(false);
+    setJumpToSceneIdx(null);
+  }
+
+  function openJumpTo() {
+    // Pre-select the scene list view, defaulting to the scene containing the
+    // current line (if any) so it's already expanded when the modal opens.
+    setJumpToSceneIdx(null);
+    setShowJumpTo(true);
+  }
+
+  function closeJumpTo() {
+    setShowJumpTo(false);
+    setJumpToSceneIdx(null);
   }
 
   function goPrevScene() {
@@ -279,7 +295,7 @@ export default function PlayerPage() {
             </div>
           )}
           <button
-            onClick={() => setShowJumpTo(true)}
+            onClick={openJumpTo}
             className="border px-3 py-1.5 rounded hover:bg-slate-50"
           >
             {t('player.jumpTo')}
@@ -460,48 +476,113 @@ export default function PlayerPage() {
       {showJumpTo && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-          onClick={() => setShowJumpTo(false)}
+          onClick={closeJumpTo}
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b flex items-center justify-between">
-              <h3 className="font-semibold">{t('player.jumpToTitle')}</h3>
-              <button
-                onClick={() => setShowJumpTo(false)}
-                className="text-slate-400 hover:text-slate-700"
-              >
+              <h3 className="font-semibold flex items-center gap-2">
+                {sceneIndices.length > 0 && jumpToSceneIdx !== null && (
+                  <button
+                    onClick={() => setJumpToSceneIdx(null)}
+                    className="text-brand-600 hover:text-brand-800 text-sm"
+                    title={t('player.backToScenes') ?? ''}
+                  >
+                    ◀
+                  </button>
+                )}
+                {sceneIndices.length === 0 || jumpToSceneIdx === null
+                  ? t('player.jumpToTitle')
+                  : script.entries[sceneIndices[jumpToSceneIdx]].text}
+              </h3>
+              <button onClick={closeJumpTo} className="text-slate-400 hover:text-slate-700">
                 ✕
               </button>
             </div>
             <div className="overflow-y-auto flex-1">
-              {script.entries.map((entry, i) => (
-                <button
-                  key={entry.id}
-                  onClick={() => jumpToIndex(i)}
-                  className={`w-full text-start px-4 py-2 border-b hover:bg-slate-50 ${
-                    i === index ? 'bg-brand-50' : ''
-                  } ${entry.type === 'scene' ? 'bg-brand-100 sticky top-0 z-10' : ''}`}
-                >
-                  {entry.type === 'scene' ? (
-                    <span className="font-bold text-brand-800 uppercase tracking-wide text-sm">
-                      {entry.text}
-                    </span>
-                  ) : entry.type === 'direction' ? (
-                    <span className="italic text-slate-500 text-sm">{entry.text}</span>
-                  ) : (
-                    <span className="text-sm">
-                      <span
-                        className={`font-semibold ${isMine(entry) ? 'text-amber-700' : 'text-brand-700'}`}
+              {sceneIndices.length === 0 ? (
+                // No scenes detected at all: fall back to a flat list of every entry.
+                script.entries.map((entry, i) => (
+                  <button
+                    key={entry.id}
+                    onClick={() => jumpToIndex(i)}
+                    className={`w-full text-start px-4 py-2 border-b hover:bg-slate-50 ${
+                      i === index ? 'bg-brand-50' : ''
+                    }`}
+                  >
+                    {entry.type === 'direction' ? (
+                      <span className="italic text-slate-500 text-sm">{entry.text}</span>
+                    ) : (
+                      <span className="text-sm">
+                        <span
+                          className={`font-semibold ${isMine(entry) ? 'text-amber-700' : 'text-brand-700'}`}
+                        >
+                          {entry.character}:
+                        </span>{' '}
+                        {entry.text}
+                      </span>
+                    )}
+                  </button>
+                ))
+              ) : jumpToSceneIdx === null ? (
+                // Top level: list of scenes only.
+                sceneIndices.map((sceneEntryIndex, sIdx) => {
+                  const nextSceneEntryIndex = sceneIndices[sIdx + 1] ?? script.entries.length;
+                  const lineCount = script.entries
+                    .slice(sceneEntryIndex + 1, nextSceneEntryIndex)
+                    .filter((e) => e.type === 'line').length;
+                  return (
+                    <button
+                      key={script.entries[sceneEntryIndex].id}
+                      onClick={() => setJumpToSceneIdx(sIdx)}
+                      className={`w-full text-start px-4 py-3 border-b hover:bg-slate-50 flex items-center justify-between ${
+                        sceneEntryIndex <= index && index < nextSceneEntryIndex ? 'bg-brand-50' : ''
+                      }`}
+                    >
+                      <span className="font-bold text-brand-800 uppercase tracking-wide text-sm">
+                        {script.entries[sceneEntryIndex].text}
+                      </span>
+                      <span className="text-xs text-slate-400 shrink-0 ms-2">
+                        {t('scripts.entries', { count: lineCount })}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                // Drilled into one scene: list only its lines/directions.
+                (() => {
+                  const start = sceneIndices[jumpToSceneIdx];
+                  const end = sceneIndices[jumpToSceneIdx + 1] ?? script.entries.length;
+                  return script.entries.slice(start, end).map((entry, offset) => {
+                    const i = start + offset;
+                    if (entry.type === 'scene') return null;
+                    return (
+                      <button
+                        key={entry.id}
+                        onClick={() => jumpToIndex(i)}
+                        className={`w-full text-start px-4 py-2 border-b hover:bg-slate-50 ${
+                          i === index ? 'bg-brand-50' : ''
+                        }`}
                       >
-                        {entry.character}:
-                      </span>{' '}
-                      {entry.text}
-                    </span>
-                  )}
-                </button>
-              ))}
+                        {entry.type === 'direction' ? (
+                          <span className="italic text-slate-500 text-sm">{entry.text}</span>
+                        ) : (
+                          <span className="text-sm">
+                            <span
+                              className={`font-semibold ${isMine(entry) ? 'text-amber-700' : 'text-brand-700'}`}
+                            >
+                              {entry.character}:
+                            </span>{' '}
+                            {entry.text}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  });
+                })()
+              )}
             </div>
           </div>
         </div>

@@ -58,6 +58,7 @@
     "nextScene": "התמונה הבאה",
     "sceneCounter": "תמונה {{current}} / {{total}}",
     "beforeFirstScene": "לפני תמונה 1",
+    "backToScenes": "חזרה לרשימת התמונות",
     "record": "הקלט את השורה שלי",
     "recording": "מקליט... הקש כדי לעצור",
     "processing": "מתמלל...",
