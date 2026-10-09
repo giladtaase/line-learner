@@ -236,6 +236,17 @@ export function parseScript(rawText: string): ParseResult {
   };
 }
 
+/** Returns the effective list of character(s) the user plays for a script,
+ *  transparently migrating the older single `myCharacter` field (from before
+ *  multi-character selection was supported) if `myCharacters` isn't set yet. */
+export function getMyCharacters(script: {
+  myCharacter?: string;
+  myCharacters?: string[];
+}): string[] {
+  if (script.myCharacters && script.myCharacters.length > 0) return script.myCharacters;
+  return script.myCharacter ? [script.myCharacter] : [];
+}
+
 export async function extractTextFromFile(file: File): Promise<string> {
   const name = file.name.toLowerCase();
   if (name.endsWith('.docx')) {

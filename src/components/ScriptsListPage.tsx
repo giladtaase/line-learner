@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
-import { parseScript, extractTextFromFile } from '../lib/scriptParser';
+import { parseScript, extractTextFromFile, getMyCharacters } from '../lib/scriptParser';
 import type { Script } from '../types';
 
 export default function ScriptsListPage() {
@@ -128,7 +128,10 @@ export default function ScriptsListPage() {
               <p className="text-xs text-slate-500">
                 {t('scripts.entries', { count: script.entries.length })} ·{' '}
                 {script.language === 'he' ? 'עברית' : 'English'}
-                {script.myCharacter ? ` · ${script.myCharacter}` : ''}
+                {(() => {
+                  const mine = getMyCharacters(script);
+                  return mine.length > 0 ? ` · ${mine.join(', ')}` : '';
+                })()}
               </p>
             </div>
             <div className="flex gap-2">

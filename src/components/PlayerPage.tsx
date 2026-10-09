@@ -5,6 +5,7 @@ import { v4 as uuid } from 'uuid';
 import { db, getSettings, recordAttempt } from '../lib/db';
 import { speak, stopSpeaking, ensureVoicesLoaded } from '../lib/tts';
 import { gradeAttempt, stripInlineDirections } from '../lib/fuzzyMatch';
+import { getMyCharacters } from '../lib/scriptParser';
 import {
   createTranscriptionController,
   type TranscriptionController
@@ -75,11 +76,12 @@ export default function PlayerPage() {
     setRecordingState('idle');
   }, [index]);
 
+  const myCharacters = script ? getMyCharacters(script) : [];
+
   function isMine(entry: Script['entries'][number] | undefined): boolean {
-    if (!entry || entry.type !== 'line' || !script?.myCharacter) return false;
-    return entry.characters
-      ? entry.characters.includes(script.myCharacter)
-      : entry.character === script.myCharacter;
+    if (!entry || entry.type !== 'line' || myCharacters.length === 0) return false;
+    const candidates = entry.characters ?? (entry.character ? [entry.character] : []);
+    return candidates.some((c) => myCharacters.includes(c));
   }
 
   const currentEntry = script?.entries[index];
@@ -247,7 +249,7 @@ export default function PlayerPage() {
     return <p className="text-slate-500">{t('player.noScriptSelected')}</p>;
   }
 
-  if (!script.myCharacter) {
+  if (myCharacters.length === 0) {
     return (
       <div className="space-y-3">
         <p className="text-slate-600">{t('player.chooseYourCharacterFirst')}</p>

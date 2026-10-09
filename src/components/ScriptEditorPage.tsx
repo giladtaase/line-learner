@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
-import { recomputeEntryCharacters } from '../lib/scriptParser';
+import { recomputeEntryCharacters, getMyCharacters } from '../lib/scriptParser';
 import type { Script, ScriptEntry } from '../types';
 
 export default function ScriptEditorPage() {
@@ -13,7 +13,7 @@ export default function ScriptEditorPage() {
   const [script, setScript] = useState<Script | null>(null);
   const [entries, setEntries] = useState<ScriptEntry[]>([]);
   const [characters, setCharacters] = useState<string[]>([]);
-  const [myCharacter, setMyCharacter] = useState<string>('');
+  const [myCharacters, setMyCharacters] = useState<string[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -22,15 +22,25 @@ export default function ScriptEditorPage() {
       setScript(s);
       setEntries(s.entries);
       setCharacters(s.characters);
-      setMyCharacter(s.myCharacter ?? s.characters[0] ?? '');
+      const existing = getMyCharacters(s);
+      setMyCharacters(existing.length > 0 ? existing : s.characters.slice(0, 1));
     });
   }, [id]);
 
   function applyRecompute(next: ScriptEntry[]): ScriptEntry[] {
     const { entries: resolved, characters: list } = recomputeEntryCharacters(next);
     setCharacters(list);
-    if (!list.includes(myCharacter)) setMyCharacter(list[0] ?? '');
+    setMyCharacters((prev) => {
+      const stillValid = prev.filter((c) => list.includes(c));
+      return stillValid.length > 0 ? stillValid : list.slice(0, 1);
+    });
     return resolved;
+  }
+
+  function toggleMyCharacter(name: string) {
+    setMyCharacters((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+    );
   }
 
   function updateEntry(index: number, patch: Partial<ScriptEntry>) {
@@ -62,7 +72,7 @@ export default function ScriptEditorPage() {
         id: uuid(),
         order: 0,
         type: 'line',
-        character: myCharacter || characters[0] || '',
+        character: myCharacters[0] || characters[0] || '',
         text: ''
       });
       return applyRecompute(next.map((e, i) => ({ ...e, order: i })));
@@ -77,7 +87,8 @@ export default function ScriptEditorPage() {
       ...script,
       entries: normalized,
       characters: list,
-      myCharacter: myCharacter || undefined,
+      myCharacter: undefined,
+      myCharacters: myCharacters.length > 0 ? myCharacters : undefined,
       updatedAt: Date.now()
     };
     await db.scripts.put(updated);
@@ -111,22 +122,29 @@ export default function ScriptEditorPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
-        <label className="font-medium text-sm">{t('scripts.myCharacter')}</label>
-        <select
-          value={myCharacter}
-          onChange={(e) => setMyCharacter(e.target.value)}
-          className="border rounded px-2 py-1"
-        >
-          <option value="" disabled>
-            {t('scripts.chooseCharacter')}
-          </option>
-          {characters.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+      <div className="bg-white rounded-lg shadow p-4 space-y-2">
+        <label className="font-medium text-sm block">{t('scripts.myCharacter')}</label>
+        <p className="text-xs text-slate-500">{t('scripts.chooseCharacter')}</p>
+        <div className="flex flex-wrap gap-2">
+          {characters.map((c) => {
+            const selected = myCharacters.includes(c);
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => toggleMyCharacter(c)}
+                className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                  selected
+                    ? 'bg-amber-600 border-amber-600 text-white'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {selected ? '✓ ' : ''}
+                {c}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="space-y-2">

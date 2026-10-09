@@ -19,8 +19,14 @@ export interface Script {
   id: string;
   title: string;
   language: Language;
-  /** The character the user plays, chosen after upload. */
+  /**
+   * @deprecated Superseded by `myCharacters` (supports playing more than one
+   * role). Kept only so older saved scripts can be migrated on load.
+   */
   myCharacter?: string;
+  /** The character(s) the user plays, chosen after upload. Supports more than
+   *  one, e.g. when covering several minor roles or understudying. */
+  myCharacters?: string[];
   /** All distinct character names detected in the script. */
   characters: string[];
   entries: ScriptEntry[];
