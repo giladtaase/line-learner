@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
 import { recomputeEntryCharacters, getMyCharacters } from '../lib/scriptParser';
-import { downloadScriptFile, shareScriptFile } from '../lib/scriptFile';
+import { exportScript } from '../lib/scriptFile';
+import { Button, IconButton } from './ui';
 import type { Script, ScriptEntry } from '../types';
+
+const ROW_BUTTON = 'text-xs border px-1.5 py-0.5 hover:bg-slate-50';
 
 export default function ScriptEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +21,9 @@ export default function ScriptEditorPage() {
   const [myCharacters, setMyCharacters] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Set right before navigating away after a successful save, when `dirty`
+  // in this render is still true.
+  const saved = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -36,9 +42,21 @@ export default function ScriptEditorPage() {
   // Ignore selections for characters that no longer exist after edits.
   const selectedCharacters = myCharacters.filter((c) => characters.includes(c));
 
+  // Every way out of the editor inside the app (header links, Back, the
+  // browser's back button) asks before discarding edits.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      dirty && !saved.current && currentLocation.pathname !== nextLocation.pathname
+  );
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (window.confirm(t('editor.unsavedChanges'))) blocker.proceed();
+    else blocker.reset();
+  }, [blocker, t]);
+
   useEffect(() => {
     if (!dirty) return;
-    // Warn before closing/reloading the tab with unsaved edits.
+    // Closing or reloading the tab is outside the router; the browser asks instead.
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
@@ -97,11 +115,6 @@ export default function ScriptEditorPage() {
     return resolved.entries.map((e, i) => ({ ...e, order: i }));
   }
 
-  function handleBack() {
-    if (dirty && !window.confirm(t('editor.unsavedChanges'))) return;
-    navigate('/');
-  }
-
   async function handleSave() {
     if (!script) return;
     if (selectedCharacters.length === 0) {
@@ -109,33 +122,39 @@ export default function ScriptEditorPage() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const updated: Script = {
+    await db.scripts.put({
       ...script,
       entries: normalizedEntries(),
       characters,
       myCharacter: undefined,
       myCharacters: selectedCharacters,
       updatedAt: Date.now()
-    };
-    await db.scripts.put(updated);
+    });
+    saved.current = true;
     setDirty(false);
     navigate(`/scripts/${script.id}/play`);
   }
 
-  async function handleExport() {
+  function handleExport() {
     if (!script) return;
-    const exportScript = { ...script, entries: normalizedEntries(), characters };
-    const shared = await shareScriptFile(exportScript);
-    if (!shared) {
-      // Not supported on this device/browser (typically desktop) — fall
-      // back to a plain file download instead.
-      downloadScriptFile(exportScript);
-    }
+    void exportScript({ ...script, entries: normalizedEntries(), characters });
   }
 
   if (!script) {
     return <p className="text-slate-500">{t('common.loading')}</p>;
   }
+
+  const actions = (
+    <>
+      <Button onClick={() => navigate('/')}>{t('common.back')}</Button>
+      <Button onClick={handleExport} title={t('scripts.exportHint')}>
+        {t('scripts.export')}
+      </Button>
+      <Button variant="primary" onClick={handleSave}>
+        {t('scripts.save')}
+      </Button>
+    </>
+  );
 
   return (
     <div className="space-y-4">
@@ -144,33 +163,20 @@ export default function ScriptEditorPage() {
           <h2 className="text-xl font-semibold">{script.title}</h2>
           <p className="text-sm text-slate-600 mt-1">{t('editor.hint')}</p>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={handleBack}
-            className="border px-4 py-2 rounded hover:bg-slate-50"
-          >
-            {t('common.back')}
-          </button>
-          <button
-            onClick={handleExport}
-            className="border px-4 py-2 rounded hover:bg-slate-50"
-            title={t('scripts.exportHint') ?? ''}
-          >
-            {t('scripts.export')}
-          </button>
-          <button
-            onClick={handleSave}
-            className="bg-brand-600 text-white px-4 py-2 rounded hover:bg-brand-700"
-          >
-            {t('scripts.save')}
-          </button>
-        </div>
+        <div className="flex gap-2 shrink-0">{actions}</div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-4 space-y-2">
-        <label className="font-medium text-sm block">{t('scripts.myCharacter')}</label>
+      <fieldset className="bg-white rounded-lg shadow p-4 space-y-2">
+        <legend className="sr-only">{t('scripts.myCharacter')}</legend>
+        <p className="font-medium text-sm" aria-hidden="true">
+          {t('scripts.myCharacter')}
+        </p>
         <p className="text-xs text-slate-500">{t('scripts.chooseCharacter')}</p>
-        {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+        {saveError && (
+          <p className="text-sm text-red-600" role="alert">
+            {saveError}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {characters.map((c) => {
             const selected = myCharacters.includes(c);
@@ -178,6 +184,7 @@ export default function ScriptEditorPage() {
               <button
                 key={c}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => toggleMyCharacter(c)}
                 className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
                   selected
@@ -191,7 +198,7 @@ export default function ScriptEditorPage() {
             );
           })}
         </div>
-      </div>
+      </fieldset>
 
       <div className="space-y-2">
         {entries.map((entry, index) => (
@@ -203,6 +210,7 @@ export default function ScriptEditorPage() {
           >
             <div className="flex flex-col gap-1 w-28 shrink-0">
               <select
+                aria-label={t('editor.type')}
                 value={entry.type}
                 onChange={(e) =>
                   updateEntry(index, {
@@ -221,71 +229,44 @@ export default function ScriptEditorPage() {
               {entry.type === 'line' && (
                 <input
                   type="text"
+                  aria-label={t('editor.character')}
                   value={entry.character ?? ''}
                   onChange={(e) => updateEntry(index, { character: e.target.value })}
                   className="border rounded px-1 py-1 text-xs"
-                  placeholder={t('editor.character') ?? ''}
+                  placeholder={t('editor.character')}
                 />
               )}
             </div>
             <textarea
+              aria-label={t('editor.text')}
               value={entry.text}
               onChange={(e) => updateEntry(index, { text: e.target.value })}
               rows={2}
               className="flex-1 border rounded px-2 py-1 text-sm"
             />
             <div className="flex flex-col gap-1 shrink-0">
-              <button
-                onClick={() => moveEntry(index, -1)}
-                className="text-xs border rounded px-1.5 py-0.5 hover:bg-slate-50"
-                title={t('editor.moveUp') ?? ''}
-              >
+              <IconButton label={t('editor.moveUp')} onClick={() => moveEntry(index, -1)} className={ROW_BUTTON}>
                 ↑
-              </button>
-              <button
-                onClick={() => moveEntry(index, 1)}
-                className="text-xs border rounded px-1.5 py-0.5 hover:bg-slate-50"
-                title={t('editor.moveDown') ?? ''}
-              >
+              </IconButton>
+              <IconButton label={t('editor.moveDown')} onClick={() => moveEntry(index, 1)} className={ROW_BUTTON}>
                 ↓
-              </button>
-              <button
-                onClick={() => addRow(index)}
-                className="text-xs border rounded px-1.5 py-0.5 hover:bg-slate-50"
-                title={t('editor.addRow') ?? ''}
-              >
+              </IconButton>
+              <IconButton label={t('editor.addRow')} onClick={() => addRow(index)} className={ROW_BUTTON}>
                 +
-              </button>
-              <button
+              </IconButton>
+              <IconButton
+                label={t('editor.removeRow')}
                 onClick={() => removeEntry(index)}
-                className="text-xs border border-red-200 text-red-600 rounded px-1.5 py-0.5 hover:bg-red-50"
-                title={t('editor.removeRow') ?? ''}
+                className="text-xs border border-red-200 text-red-600 px-1.5 py-0.5 hover:bg-red-50"
               >
                 ×
-              </button>
+              </IconButton>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex justify-end gap-2 pb-6">
-        <button onClick={handleBack} className="border px-4 py-2 rounded hover:bg-slate-50">
-          {t('common.back')}
-        </button>
-        <button
-          onClick={handleExport}
-          className="border px-4 py-2 rounded hover:bg-slate-50"
-          title={t('scripts.exportHint') ?? ''}
-        >
-          {t('scripts.export')}
-        </button>
-        <button
-          onClick={handleSave}
-          className="bg-brand-600 text-white px-4 py-2 rounded hover:bg-brand-700"
-        >
-          {t('scripts.save')}
-        </button>
-      </div>
+      <div className="flex justify-end gap-2 pb-6">{actions}</div>
     </div>
   );
 }

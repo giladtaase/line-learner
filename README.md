@@ -106,24 +106,39 @@ react-router, mammoth (`.docx` parsing), and vite-plugin-pwa.
 
 ```
 src/
+  main.tsx                 # entry: settings provider + data router
+  routes.tsx               # route table (shared with tests)
+  App.tsx                  # layout: header, nav, <Outlet />
+  settings/                # SettingsProvider + useSettings()
+  hooks/
+    usePlayback.ts         # read-through playback state (run ids, pause, continue)
+    useErrorMessage.ts     # translates AppError codes for display
   components/
+    ui.tsx                 # Button, IconButton, Modal
     ScriptsListPage.tsx    # script library, upload/paste/import
     ScriptEditorPage.tsx   # review and correct a parsed script, pick roles
     PlayerPage.tsx         # read-through practice
+    player/                # CurrentEntry, RecordPanel, JumpToDialog, LineText
     SettingsPage.tsx
-  lib/
+  lib/                     # no React; unit-tested
     scriptParser.ts        # text -> entries (cues, directions, scenes, joint cues)
     fuzzyMatch.ts          # normalization and similarity grading
+    playback.ts            # auto-play loop
+    scenes.ts              # scene navigation helpers
     transcription.ts       # Web Speech / Whisper speech-to-text
     tts.ts                 # speech synthesis for other characters' lines
     scriptFile.ts          # .linelearner.json export/import format
+    errors.ts              # AppError: user-facing errors with translatable codes
     db.ts                  # Dexie schema, settings defaults and migrations
   locales/                 # en.json, he.json
+  test/                    # test setup and renderApp() helper
   types.ts
 ```
 
-Unit tests sit next to the code they cover (`*.test.ts`). IndexedDB is
-replaced by `fake-indexeddb` in tests.
+Tests sit next to the code they cover (`*.test.ts` for `lib`, `*.test.tsx`
+for pages, using React Testing Library and `renderApp()`). IndexedDB is
+replaced by `fake-indexeddb` in tests. User-facing errors are thrown as
+`AppError` with a code; add its text under `errors` in both locale files.
 
 ### Deployment
 

@@ -1,634 +1,179 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { v4 as uuid } from 'uuid';
-import { db, getSettings, recordAttempt } from '../lib/db';
-import { speak, stopSpeaking, ensureVoicesLoaded } from '../lib/tts';
-import { gradeAttempt, stripInlineDirections } from '../lib/fuzzyMatch';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../lib/db';
+import { ensureVoicesLoaded } from '../lib/tts';
 import { getMyCharacters } from '../lib/scriptParser';
-import { runPlayback } from '../lib/playback';
 import {
-  createTranscriptionController,
-  type TranscriptionController
-} from '../lib/transcription';
-import type { Script, OtherLinesMode, AppSettings } from '../types';
+  sceneStarts,
+  sceneNumberAt,
+  previousSceneStart,
+  nextSceneStart
+} from '../lib/scenes';
+import { usePlayback } from '../hooks/usePlayback';
+import { useSettings } from '../settings/context';
+import { Button, IconButton } from './ui';
+import CurrentEntry from './player/CurrentEntry';
+import JumpToDialog from './player/JumpToDialog';
+import type { OtherLinesMode, ScriptEntry } from '../types';
 
-type RecordingState = 'idle' | 'recording' | 'processing';
-
-/** Renders a dialogue line with any inline (...)/[...] stage directions shown
- *  in a muted italic style, making clear they're acting notes, not words to
- *  actually speak (and thus not part of what the recording grader checks). */
-function LineWithInlineDirections({ text }: { text: string }) {
-  const parts = text.split(/([(\[][^)\]]*[)\]])/g).filter((p) => p.length > 0);
-  return (
-    <>
-      {parts.map((part, i) =>
-        /^[(\[]/.test(part) ? (
-          <span key={i} className="italic text-slate-400">
-            {part}
-          </span>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
-    </>
-  );
-}
-
-interface GradeResult {
-  transcript: string;
-  similarity: number;
-  passed: boolean;
-}
+const NO_ENTRIES: ScriptEntry[] = [];
 
 export default function PlayerPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [script, setScript] = useState<Script | null>(null);
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [otherLinesMode, setOtherLinesMode] = useState<OtherLinesMode>('speak');
+  const { settings } = useSettings();
+  // undefined while loading, null if there's no such script.
+  const script = useLiveQuery(async () => (id ? ((await db.scripts.get(id)) ?? null) : null), [id]);
+  const [otherLinesMode, setOtherLinesMode] = useState<OtherLinesMode>(
+    settings.defaultOtherLinesMode
+  );
   const [showJumpTo, setShowJumpTo] = useState(false);
-  // Index into sceneIndices of the scene currently expanded in the Jump-to
-  // picker, or null while showing the top-level scene list.
-  const [jumpToSceneIdx, setJumpToSceneIdx] = useState<number | null>(null);
-  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
-  const [recordingError, setRecordingError] = useState<string | null>(null);
-  const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
-  // Your own line's text is hidden by default on every new line, forcing you
-  // to actually recall it before peeking — otherwise there's no real
-  // memorization practice happening.
-  const [revealMyLine, setRevealMyLine] = useState(false);
-  // Incremented whenever playback is (re)started or stopped. Each autoplay run
-  // remembers the id it started with and bails out as soon as it no longer
-  // matches, so a run left over from before a pause/jump can never keep going
-  // alongside the new one.
-  const playbackRunId = useRef(0);
-  const transcriptionRef = useRef<TranscriptionController | null>(null);
 
   useEffect(() => {
-    if (!id) return;
-    db.scripts.get(id).then((s) => s && setScript(s));
-    getSettings().then((s) => {
-      setSettings(s);
-      setOtherLinesMode(s.defaultOtherLinesMode);
-    });
     ensureVoicesLoaded();
-  }, [id]);
+  }, []);
 
-  useEffect(() => {
-    // Clear any stale recording/grading feedback whenever we move to a different
-    // line, and abandon a recording still in progress for the previous one.
-    transcriptionRef.current?.cancel();
-    transcriptionRef.current = null;
-    setGradeResult(null);
-    setRecordingError(null);
-    setRecordingState('idle');
-    setRevealMyLine(false);
-  }, [index]);
-
+  const entries = script?.entries ?? NO_ENTRIES;
   const myCharacters = useMemo(() => (script ? getMyCharacters(script) : []), [script]);
-
   const isMine = useCallback(
-    (entry: Script['entries'][number] | undefined): boolean => {
-      if (!entry || entry.type !== 'line' || myCharacters.length === 0) return false;
-      const candidates = entry.characters ?? (entry.character ? [entry.character] : []);
-      return candidates.some((c) => myCharacters.includes(c));
+    (entry: ScriptEntry): boolean => {
+      if (entry.type !== 'line') return false;
+      const names = entry.characters ?? (entry.character ? [entry.character] : []);
+      return names.some((c) => myCharacters.includes(c));
     },
     [myCharacters]
   );
 
-  const currentEntry = script?.entries[index];
-  const isMyLine = isMine(currentEntry);
+  const playback = usePlayback({
+    entries,
+    language: script?.language ?? 'en',
+    isMine,
+    otherLinesMode,
+    ttsRate: settings.ttsRate
+  });
+  const { index, playing } = playback;
 
-  const sceneIndices = (script?.entries ?? [])
-    .map((e, i) => (e.type === 'scene' ? i : -1))
-    .filter((i) => i >= 0);
-  const currentSceneNumber = sceneIndices.filter((i) => i <= index).length; // 1-based, 0 if before first scene
-
-  const stopPlayback = useCallback(() => {
-    playbackRunId.current++;
-    stopSpeaking();
-    setPlaying(false);
-  }, []);
-
-  useEffect(() => {
-    // Stop speaking and abandon any recording when leaving the page.
-    return () => {
-      stopPlayback();
-      transcriptionRef.current?.cancel();
-    };
-  }, [stopPlayback]);
-
-  const goPrev = useCallback(() => {
-    stopPlayback();
-    setIndex((i) => Math.max(i - 1, 0));
-  }, [stopPlayback]);
-
-  const goNext = useCallback(() => {
-    stopPlayback();
-    setIndex((i) => Math.min(i + 1, (script?.entries.length ?? 1) - 1));
-  }, [script, stopPlayback]);
-
-  function jumpToIndex(i: number) {
-    stopPlayback();
-    setIndex(i);
-    setShowJumpTo(false);
-    setJumpToSceneIdx(null);
-  }
-
-  function openJumpTo() {
-    // Pre-select the scene list view, defaulting to the scene containing the
-    // current line (if any) so it's already expanded when the modal opens.
-    setJumpToSceneIdx(null);
-    setShowJumpTo(true);
-  }
-
-  function closeJumpTo() {
-    setShowJumpTo(false);
-    setJumpToSceneIdx(null);
-  }
-
-  function goPrevScene() {
-    const earlierScenes = sceneIndices.filter((i) => i < index);
-    if (earlierScenes.length === 0) return;
-    jumpToIndex(earlierScenes[earlierScenes.length - 1]);
-  }
-
-  function goNextScene() {
-    const laterScene = sceneIndices.find((i) => i > index);
-    if (laterScene === undefined) return;
-    jumpToIndex(laterScene);
-  }
-
-  async function handleStartRecording() {
-    if (!script || !currentEntry) return;
-    setRecordingError(null);
-    setGradeResult(null);
-    try {
-      const settingsNow = settings ?? (await getSettings());
-      const controller = createTranscriptionController(settingsNow, script.language);
-      transcriptionRef.current = controller;
-      await controller.start();
-      setRecordingState('recording');
-    } catch (err) {
-      transcriptionRef.current = null;
-      setRecordingError(err instanceof Error ? err.message : String(err));
-      setRecordingState('idle');
-    }
-  }
-
-  async function handleStopRecording() {
-    const controller = transcriptionRef.current;
-    if (!controller || !currentEntry || !script) return;
-    setRecordingState('processing');
-    try {
-      const transcript = await controller.stop();
-      // Moved to another line (or cancelled) while transcribing: drop the result.
-      if (transcriptionRef.current !== controller) return;
-      const settingsNow = settings ?? (await getSettings());
-      const { similarity, passed } = gradeAttempt(
-        currentEntry.text,
-        transcript,
-        settingsNow.leniencyThreshold
-      );
-      setGradeResult({ transcript, similarity, passed });
-      await recordAttempt({
-        id: uuid(),
-        scriptId: script.id,
-        entryId: currentEntry.id,
-        timestamp: Date.now(),
-        mode: 'readthrough',
-        transcript,
-        similarity,
-        passed
-      });
-    } catch (err) {
-      if (transcriptionRef.current === controller) {
-        setRecordingError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      // Only reset if a newer recording hasn't taken over in the meantime.
-      if (transcriptionRef.current === controller) {
-        setRecordingState('idle');
-        transcriptionRef.current = null;
-      }
-    }
-  }
-
-  function handleCancelRecording() {
-    transcriptionRef.current?.cancel();
-    transcriptionRef.current = null;
-    setRecordingState('idle');
-  }
-
-  const runAutoPlay = useCallback(
-    async (startIndex: number) => {
-      if (!script) return;
-      stopSpeaking();
-      const runId = ++playbackRunId.current;
-      const isCancelled = () => playbackRunId.current !== runId;
-      setPlaying(true);
-      await runPlayback({
-        entries: script.entries,
-        startIndex,
-        isMine,
-        onIndex: setIndex,
-        isCancelled,
-        perform: async (entry) => {
-          if (entry.type === 'line' && otherLinesMode === 'speak') {
-            await speak(stripInlineDirections(entry.text), script.language, settings?.ttsRate ?? 1);
-          } else {
-            // Give a moment to read displayed text/direction/scene heading before advancing.
-            const pause = entry.type === 'direction' ? 700 : entry.type === 'scene' ? 1000 : 1400;
-            await new Promise((r) => setTimeout(r, pause));
-          }
-        }
-      });
-      // A cancelled run leaves `playing` to whoever cancelled it (a pause,
-      // jump, or a newer run that is now playing).
-      if (!isCancelled()) setPlaying(false);
-    },
-    [script, isMine, otherLinesMode, settings]
-  );
-
-  function handlePlay() {
-    runAutoPlay(index);
-  }
-
-  function handlePause() {
-    stopPlayback();
-  }
-
-  function handleStop() {
-    stopPlayback();
-    setIndex(0);
-  }
-
-  function handleContinueAfterMyLine() {
-    if (!script || index >= script.entries.length - 1) return;
-    // Pass the next index explicitly: `index` in this render still points at
-    // the user's own line, and restarting from there would pause right away.
-    runAutoPlay(index + 1);
-  }
-
-  if (!script) {
-    return <p className="text-slate-500">{t('player.noScriptSelected')}</p>;
-  }
+  if (script === undefined) return <p className="text-slate-500">{t('common.loading')}</p>;
+  if (script === null) return <p className="text-slate-500">{t('player.scriptNotFound')}</p>;
 
   if (myCharacters.length === 0) {
     return (
       <div className="space-y-3">
         <p className="text-slate-600">{t('player.chooseYourCharacterFirst')}</p>
-        <button
-          onClick={() => navigate(`/scripts/${script.id}/edit`)}
-          className="bg-brand-600 text-white px-4 py-2 rounded hover:bg-brand-700"
-        >
+        <Button variant="primary" onClick={() => navigate(`/scripts/${script.id}/edit`)}>
           {t('editor.title')}
-        </button>
+        </Button>
       </div>
     );
   }
+
+  const currentEntry = entries[index];
+  const isMyLine = currentEntry ? isMine(currentEntry) : false;
+  const starts = sceneStarts(entries);
+  const sceneNumber = sceneNumberAt(starts, index);
+  const prevScene = previousSceneStart(starts, index);
+  const nextScene = nextSceneStart(starts, index);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-semibold">{script.title}</h2>
         <div className="flex items-center gap-3 text-sm flex-wrap">
-          {sceneIndices.length > 0 && (
+          {starts.length > 0 && (
             <div className="flex items-center gap-1">
-              <button
-                onClick={goPrevScene}
-                disabled={sceneIndices.filter((i) => i < index).length === 0}
-                className="border px-2 py-1.5 rounded hover:bg-slate-50 disabled:opacity-40"
-                title={t('player.previousScene') ?? ''}
+              <IconButton
+                label={t('player.previousScene')}
+                onClick={() => prevScene !== undefined && playback.jumpTo(prevScene)}
+                disabled={prevScene === undefined}
+                className="border px-2 py-1.5 hover:bg-slate-50"
               >
                 ◀◀
-              </button>
+              </IconButton>
               <span className="text-xs text-slate-500 px-1">
-                {currentSceneNumber > 0
-                  ? t('player.sceneCounter', {
-                      current: currentSceneNumber,
-                      total: sceneIndices.length
-                    })
+                {sceneNumber > 0
+                  ? t('player.sceneCounter', { current: sceneNumber, total: starts.length })
                   : t('player.beforeFirstScene')}
               </span>
-              <button
-                onClick={goNextScene}
-                disabled={sceneIndices.find((i) => i > index) === undefined}
-                className="border px-2 py-1.5 rounded hover:bg-slate-50 disabled:opacity-40"
-                title={t('player.nextScene') ?? ''}
+              <IconButton
+                label={t('player.nextScene')}
+                onClick={() => nextScene !== undefined && playback.jumpTo(nextScene)}
+                disabled={nextScene === undefined}
+                className="border px-2 py-1.5 hover:bg-slate-50"
               >
                 ▶▶
-              </button>
+              </IconButton>
             </div>
           )}
-          <button
-            onClick={openJumpTo}
-            className="border px-3 py-1.5 rounded hover:bg-slate-50"
-          >
+          <Button size="sm" onClick={() => setShowJumpTo(true)}>
             {t('player.jumpTo')}
-          </button>
-          <span>{t('player.otherLinesMode')}:</span>
-          <select
-            value={otherLinesMode}
-            onChange={(e) => setOtherLinesMode(e.target.value as OtherLinesMode)}
-            className="border rounded px-2 py-1"
-          >
-            <option value="speak">{t('player.speak')}</option>
-            <option value="display">{t('player.display')}</option>
-          </select>
+          </Button>
+          <label className="flex items-center gap-2">
+            <span>{t('player.otherLinesMode')}:</span>
+            <select
+              value={otherLinesMode}
+              onChange={(e) => setOtherLinesMode(e.target.value as OtherLinesMode)}
+              className="border rounded px-2 py-1"
+            >
+              <option value="speak">{t('player.speak')}</option>
+              <option value="display">{t('player.display')}</option>
+            </select>
+          </label>
         </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-6 min-h-[160px] flex flex-col justify-center">
-        {script.entries.map((entry, i) => {
-          if (i !== index) return null;
-          const mine = isMine(entry);
-          if (entry.type === 'scene') {
-            return (
-              <p
-                key={entry.id}
-                className="text-center font-bold text-brand-800 text-xl uppercase tracking-wide"
-              >
-                {entry.text}
-              </p>
-            );
-          }
-          if (entry.type === 'direction') {
-            return (
-              <p key={entry.id} className="italic text-slate-500 text-center">
-                {entry.text}
-              </p>
-            );
-          }
-          return (
-            <div key={entry.id} className="text-center space-y-2">
-              <p className="text-sm font-semibold text-brand-700">{entry.character}</p>
-              {mine ? (
-                <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
-                  {revealMyLine ? (
-                    <p className="text-lg">
-                      <LineWithInlineDirections text={entry.text} />
-                    </p>
-                  ) : (
-                    <p className="text-lg text-amber-300 select-none tracking-widest">••••••••••</p>
-                  )}
-                  <button
-                    onClick={() => setRevealMyLine((r) => !r)}
-                    className="text-xs font-medium text-amber-700 border border-amber-300 rounded px-3 py-1 hover:bg-amber-100"
-                  >
-                    {revealMyLine ? `🙈 ${t('player.hideLine')}` : `👁 ${t('player.showLine')}`}
-                  </button>
-                </div>
-              ) : otherLinesMode === 'display' ? (
-                <p className="text-lg">
-                  <LineWithInlineDirections text={entry.text} />
-                </p>
-              ) : (
-                <p className="text-slate-400 italic">🔊 …</p>
-              )}
-              {mine && <p className="text-xs text-amber-700">{t('player.yourTurn')}</p>}
-              {mine && (
-                <div className="pt-2 space-y-2">
-                  {recordingState === 'idle' && !gradeResult && (
-                    <button
-                      onClick={handleStartRecording}
-                      className="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                    >
-                      🎙 {t('player.record')}
-                    </button>
-                  )}
-                  {recordingState === 'recording' && (
-                    <button
-                      onClick={handleStopRecording}
-                      className="inline-flex items-center gap-2 bg-red-700 text-white px-4 py-2 rounded animate-pulse"
-                    >
-                      ⏹ {t('player.recording')}
-                    </button>
-                  )}
-                  {recordingState === 'processing' && (
-                    <p className="text-sm text-slate-500">{t('player.processing')}</p>
-                  )}
-                  {recordingState === 'recording' && (
-                    <button
-                      onClick={handleCancelRecording}
-                      className="text-xs text-slate-400 underline block mx-auto"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                  )}
-                  {recordingError && (
-                    <div className="text-sm text-red-600">
-                      <p>
-                        {t('player.recordingError')}: {recordingError}
-                      </p>
-                      <p className="text-xs text-slate-500">{t('player.micPermissionHint')}</p>
-                    </div>
-                  )}
-                  {gradeResult && (
-                    <div
-                      className={`text-sm rounded p-3 border ${
-                        gradeResult.passed
-                          ? 'bg-green-50 border-green-200 text-green-800'
-                          : 'bg-red-50 border-red-200 text-red-800'
-                      }`}
-                    >
-                      <p className="font-medium">
-                        {gradeResult.passed
-                          ? gradeResult.similarity > 0.92
-                            ? t('player.goodJob')
-                            : t('player.closeEnough')
-                          : t('player.needsWork')}
-                      </p>
-                      <p className="text-xs mt-1 opacity-80">
-                        {t('player.youSaid')}: “{gradeResult.transcript || '—'}”
-                      </p>
-                      {!gradeResult.passed && (
-                        <p className="text-xs mt-1 opacity-80">
-                          {t('player.expected')}: “{stripInlineDirections(currentEntry?.text ?? '')}”
-                        </p>
-                      )}
-                      <button
-                        onClick={() => {
-                          setGradeResult(null);
-                          setRecordingError(null);
-                        }}
-                        className="text-xs underline mt-1"
-                      >
-                        {t('player.tryAgain')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {currentEntry && (
+          <CurrentEntry
+            key={currentEntry.id}
+            entry={currentEntry}
+            mine={isMyLine}
+            otherLinesMode={otherLinesMode}
+            scriptId={script.id}
+            language={script.language}
+          />
+        )}
       </div>
 
       <div className="flex items-center justify-center gap-3 flex-wrap">
-        <button
-          onClick={goPrev}
-          disabled={index === 0}
-          className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-40"
-          title={t('player.previous') ?? ''}
-        >
+        <Button onClick={() => playback.jumpTo(index - 1)} disabled={index === 0}>
           ◀ {t('player.previous')}
-        </button>
-        {!playing && !isMyLine && (
-          <button
-            onClick={handlePlay}
-            className="bg-brand-600 text-white px-5 py-2 rounded hover:bg-brand-700"
-          >
-            {t('player.play')}
-          </button>
-        )}
-        {playing && (
-          <button onClick={handlePause} className="border px-5 py-2 rounded hover:bg-slate-50">
-            {t('player.pause')}
-          </button>
-        )}
-        {isMyLine && !playing && (
-          <button
-            onClick={handleContinueAfterMyLine}
-            className="bg-amber-600 text-white px-5 py-2 rounded hover:bg-amber-700"
-          >
+        </Button>
+        {playing ? (
+          <Button onClick={playback.pause}>{t('player.pause')}</Button>
+        ) : isMyLine ? (
+          <Button variant="accent" onClick={playback.continueAfterMyLine}>
             {t('player.continue')}
-          </button>
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={playback.play}>
+            {t('player.play')}
+          </Button>
         )}
-        <button onClick={handleStop} className="border px-5 py-2 rounded hover:bg-slate-50">
-          {t('player.stop')}
-        </button>
-        <button
-          onClick={goNext}
-          disabled={!script || index >= script.entries.length - 1}
-          className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-40"
-          title={t('player.next') ?? ''}
-        >
+        <Button onClick={playback.stop}>{t('player.stop')}</Button>
+        <Button onClick={() => playback.jumpTo(index + 1)} disabled={index >= entries.length - 1}>
           {t('player.next')} ▶
-        </button>
+        </Button>
       </div>
 
       <p className="text-center text-xs text-slate-400">
-        {index + 1} / {script.entries.length}
+        {index + 1} / {entries.length}
       </p>
 
       {showJumpTo && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-          onClick={closeJumpTo}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b flex items-center justify-between">
-              <h3 className="font-semibold flex items-center gap-2">
-                {sceneIndices.length > 0 && jumpToSceneIdx !== null && (
-                  <button
-                    onClick={() => setJumpToSceneIdx(null)}
-                    className="text-brand-600 hover:text-brand-800 text-sm"
-                    title={t('player.backToScenes') ?? ''}
-                  >
-                    ◀
-                  </button>
-                )}
-                {sceneIndices.length === 0 || jumpToSceneIdx === null
-                  ? t('player.jumpToTitle')
-                  : script.entries[sceneIndices[jumpToSceneIdx]].text}
-              </h3>
-              <button onClick={closeJumpTo} className="text-slate-400 hover:text-slate-700">
-                ✕
-              </button>
-            </div>
-            <div className="overflow-y-auto flex-1">
-              {sceneIndices.length === 0 ? (
-                // No scenes detected at all: fall back to a flat list of every entry.
-                script.entries.map((entry, i) => (
-                  <button
-                    key={entry.id}
-                    onClick={() => jumpToIndex(i)}
-                    className={`w-full text-start px-4 py-2 border-b hover:bg-slate-50 ${
-                      i === index ? 'bg-brand-50' : ''
-                    }`}
-                  >
-                    {entry.type === 'direction' ? (
-                      <span className="italic text-slate-500 text-sm">{entry.text}</span>
-                    ) : (
-                      <span className="text-sm">
-                        <span
-                          className={`font-semibold ${isMine(entry) ? 'text-amber-700' : 'text-brand-700'}`}
-                        >
-                          {entry.character}:
-                        </span>{' '}
-                        {entry.text}
-                      </span>
-                    )}
-                  </button>
-                ))
-              ) : jumpToSceneIdx === null ? (
-                // Top level: list of scenes only.
-                sceneIndices.map((sceneEntryIndex, sIdx) => {
-                  const nextSceneEntryIndex = sceneIndices[sIdx + 1] ?? script.entries.length;
-                  const lineCount = script.entries
-                    .slice(sceneEntryIndex + 1, nextSceneEntryIndex)
-                    .filter((e) => e.type === 'line').length;
-                  return (
-                    <button
-                      key={script.entries[sceneEntryIndex].id}
-                      onClick={() => setJumpToSceneIdx(sIdx)}
-                      className={`w-full text-start px-4 py-3 border-b hover:bg-slate-50 flex items-center justify-between ${
-                        sceneEntryIndex <= index && index < nextSceneEntryIndex ? 'bg-brand-50' : ''
-                      }`}
-                    >
-                      <span className="font-bold text-brand-800 uppercase tracking-wide text-sm">
-                        {script.entries[sceneEntryIndex].text}
-                      </span>
-                      <span className="text-xs text-slate-400 shrink-0 ms-2">
-                        {t('scripts.entries', { count: lineCount })}
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                // Drilled into one scene: list only its lines/directions.
-                (() => {
-                  const start = sceneIndices[jumpToSceneIdx];
-                  const end = sceneIndices[jumpToSceneIdx + 1] ?? script.entries.length;
-                  return script.entries.slice(start, end).map((entry, offset) => {
-                    const i = start + offset;
-                    if (entry.type === 'scene') return null;
-                    return (
-                      <button
-                        key={entry.id}
-                        onClick={() => jumpToIndex(i)}
-                        className={`w-full text-start px-4 py-2 border-b hover:bg-slate-50 ${
-                          i === index ? 'bg-brand-50' : ''
-                        }`}
-                      >
-                        {entry.type === 'direction' ? (
-                          <span className="italic text-slate-500 text-sm">{entry.text}</span>
-                        ) : (
-                          <span className="text-sm">
-                            <span
-                              className={`font-semibold ${isMine(entry) ? 'text-amber-700' : 'text-brand-700'}`}
-                            >
-                              {entry.character}:
-                            </span>{' '}
-                            {entry.text}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  });
-                })()
-              )}
-            </div>
-          </div>
-        </div>
+        <JumpToDialog
+          entries={entries}
+          starts={starts}
+          index={index}
+          isMine={isMine}
+          onJump={(i) => {
+            playback.jumpTo(i);
+            setShowJumpTo(false);
+          }}
+          onClose={() => setShowJumpTo(false)}
+        />
       )}
     </div>
   );

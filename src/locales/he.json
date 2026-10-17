@@ -26,7 +26,8 @@
     "exportHint": "שתף את התסריט כקובץ (בוואטסאפ, במייל וכו') או הורד אותו, כדי שחברים יוכלו להשתמש בו בלי לערוך אותו מחדש.",
     "importTitle": "ייבוא תסריט משותף",
     "importHint": "ייבא קובץ ‎.linelearner.json‎ ששותף איתך (למשל תסריט שחבר כבר תיקן) כדי לדלג על עריכה חוזרת.",
-    "confirmDelete": "למחוק את \"{{title}}\"? אי אפשר לבטל את הפעולה."
+    "confirmDelete": "למחוק את \"{{title}}\"? אי אפשר לבטל את הפעולה.",
+    "untitled": "תסריט ללא שם"
   },
   "editor": {
     "title": "סקירה ותיקון",
@@ -78,7 +79,8 @@
     "needsWork": "נראה שפספסת משהו. בדוק את השורה שוב.",
     "tryAgain": "נסה שוב",
     "recordingError": "ההקלטה נכשלה",
-    "micPermissionHint": "ודא שאישרת גישה למיקרופון כשהתבקשת."
+    "micPermissionHint": "ודא שאישרת גישה למיקרופון כשהתבקשת.",
+    "scriptNotFound": "התסריט לא נמצא."
   },
   "settings": {
     "title": "הגדרות",
@@ -101,6 +103,24 @@
     "cancel": "ביטול",
     "confirm": "אישור",
     "back": "חזרה",
-    "loading": "טוען..."
+    "loading": "טוען...",
+    "close": "סגור"
+  },
+  "errors": {
+    "noLinesDetected": "לא זוהו שורות בתסריט הזה.",
+    "fileInvalidJson": "הקובץ הזה אינו JSON תקין.",
+    "fileNotAnExport": "הקובץ לא זוהה כתסריט שיוצא מלומד התפקיד.",
+    "fileNewerVersion": "התסריט יוצא מגרסה חדשה יותר של האפליקציה ואי אפשר לייבא אותו כאן.",
+    "fileMalformed": "בקובץ התסריט חסרים נתונים או שהם פגומים.",
+    "speechUnsupported": "הדפדפן הזה לא תומך בזיהוי דיבור. נסה Chrome או Safari, או עבור ל-Whisper בהגדרות.",
+    "missingApiKey": "חסר מפתח API של OpenAI. הוסף אותו בהגדרות.",
+    "recordingNotStarted": "ההקלטה לא התחילה.",
+    "whisperApi": "שגיאה מ-Whisper ({{status}}): {{detail}}",
+    "micBlocked": "הגישה למיקרופון נחסמה.",
+    "noMicrophone": "לא נמצא מיקרופון.",
+    "speechNetwork": "זיהוי דיבור דורש חיבור לאינטרנט.",
+    "speechLanguageUnsupported": "הדפדפן הזה לא מזהה דיבור בשפת התסריט. נסה את Whisper בהגדרות.",
+    "speechStoppedEarly": "זיהוי הדיבור נעצר לפני שהתחיל.",
+    "speechError": "שגיאה בזיהוי דיבור: {{code}}"
   }
 }

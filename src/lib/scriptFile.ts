@@ -1,4 +1,5 @@
 import type { Script, ScriptEntry, Language } from '../types';
+import { AppError } from './errors';
 
 /**
  * Our own portable script file format (.linelearner.json), designed for
@@ -36,7 +37,7 @@ export function serializeScriptFile(script: Script): string {
   return JSON.stringify(scriptToFile(script), null, 2);
 }
 
-export class ScriptFileParseError extends Error {}
+export class ScriptFileParseError extends AppError {}
 
 function isScriptEntry(value: unknown): value is ScriptEntry {
   if (!value || typeof value !== 'object') return false;
@@ -57,19 +58,24 @@ export function parseScriptFile(jsonText: string): ScriptFile {
   try {
     data = JSON.parse(jsonText);
   } catch {
-    throw new ScriptFileParseError('This file is not valid JSON.');
+    throw new ScriptFileParseError('fileInvalidJson', 'This file is not valid JSON.');
   }
   if (!data || typeof data !== 'object') {
-    throw new ScriptFileParseError('This file is not a valid Line Learner script export.');
+    throw new ScriptFileParseError(
+      'fileNotAnExport',
+      'This file is not a valid Line Learner script export.'
+    );
   }
   const d = data as Record<string, unknown>;
   if (d.format !== 'line-learner-script') {
     throw new ScriptFileParseError(
+      'fileNotAnExport',
       'This file was not recognized as a Line Learner script export.'
     );
   }
   if (typeof d.version !== 'number' || d.version > SCRIPT_FILE_VERSION) {
     throw new ScriptFileParseError(
+      'fileNewerVersion',
       'This script was exported by a newer version of the app and cannot be imported here.'
     );
   }
@@ -80,7 +86,10 @@ export function parseScriptFile(jsonText: string): ScriptFile {
     !Array.isArray(d.entries) ||
     !d.entries.every(isScriptEntry)
   ) {
-    throw new ScriptFileParseError('This script file is missing or has malformed data.');
+    throw new ScriptFileParseError(
+      'fileMalformed',
+      'This script file is missing or has malformed data.'
+    );
   }
   return {
     format: 'line-learner-script',
@@ -162,4 +171,11 @@ export async function shareScriptFile(script: Script): Promise<boolean> {
     if (err instanceof DOMException && err.name === 'AbortError') return true;
     return false;
   }
+}
+
+/** Shares the script through the native share sheet where supported (mostly
+ *  mobile), otherwise downloads it as a file. */
+export async function exportScript(script: Script): Promise<void> {
+  const shared = await shareScriptFile(script);
+  if (!shared) downloadScriptFile(script);
 }

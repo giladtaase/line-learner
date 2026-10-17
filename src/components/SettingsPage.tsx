@@ -1,28 +1,10 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getSettings, saveSettings } from '../lib/db';
 import { isWebSpeechSupported } from '../lib/transcription';
-import type { AppSettings } from '../types';
+import { useSettings } from '../settings/context';
 
 export default function SettingsPage() {
-  const { t, i18n } = useTranslation();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-
-  useEffect(() => {
-    getSettings().then(setSettings);
-  }, []);
-
-  async function update(patch: Partial<AppSettings>) {
-    if (!settings) return;
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    await saveSettings(next);
-    if (patch.uiLanguage) {
-      await i18n.changeLanguage(patch.uiLanguage);
-    }
-  }
-
-  if (!settings) return <p className="text-slate-500">{t('common.loading')}</p>;
+  const { t } = useTranslation();
+  const { settings, updateSettings: update } = useSettings();
 
   return (
     <div className="space-y-4 max-w-md">
@@ -30,8 +12,9 @@ export default function SettingsPage() {
 
       <div className="bg-white rounded-lg shadow p-4 space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1">{t('settings.uiLanguage')}</label>
+          <label htmlFor="ui-language" className="block text-sm font-medium mb-1">{t('settings.uiLanguage')}</label>
           <select
+            id="ui-language"
             value={settings.uiLanguage}
             onChange={(e) => update({ uiLanguage: e.target.value as 'en' | 'he' })}
             className="border rounded px-2 py-1 w-full"
@@ -42,10 +25,11 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label htmlFor="other-lines" className="block text-sm font-medium mb-1">
             {t('settings.defaultOtherLinesMode')}
           </label>
           <select
+            id="other-lines"
             value={settings.defaultOtherLinesMode}
             onChange={(e) =>
               update({ defaultOtherLinesMode: e.target.value as 'speak' | 'display' })
@@ -58,10 +42,11 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label htmlFor="my-line-input" className="block text-sm font-medium mb-1">
             {t('settings.defaultMyLineInputMode')}
           </label>
           <select
+            id="my-line-input"
             value={settings.defaultMyLineInputMode}
             onChange={(e) =>
               update({ defaultMyLineInputMode: e.target.value as 'speak' | 'type' })
@@ -74,10 +59,11 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label htmlFor="transcription" className="block text-sm font-medium mb-1">
             {t('settings.transcriptionProvider')}
           </label>
           <select
+            id="transcription"
             value={settings.transcriptionProvider}
             onChange={(e) =>
               update({ transcriptionProvider: e.target.value as 'whisper' | 'webspeech' })
@@ -94,8 +80,9 @@ export default function SettingsPage() {
 
         {settings.transcriptionProvider === 'whisper' && (
           <div>
-            <label className="block text-sm font-medium mb-1">{t('settings.apiKey')}</label>
+            <label htmlFor="api-key" className="block text-sm font-medium mb-1">{t('settings.apiKey')}</label>
             <input
+            id="api-key"
               type="password"
               value={settings.openAiApiKey ?? ''}
               onChange={(e) => update({ openAiApiKey: e.target.value })}
@@ -107,10 +94,11 @@ export default function SettingsPage() {
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label htmlFor="tts-rate" className="block text-sm font-medium mb-1">
             {t('settings.ttsRate')}: {settings.ttsRate.toFixed(1)}x
           </label>
           <input
+            id="tts-rate"
             type="range"
             min={0.5}
             max={1.5}
@@ -122,10 +110,11 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label htmlFor="leniency" className="block text-sm font-medium mb-1">
             {t('settings.leniency')}: {Math.round(settings.leniencyThreshold * 100)}%
           </label>
           <input
+            id="leniency"
             type="range"
             min={0.4}
             max={0.95}

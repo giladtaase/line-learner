@@ -1,4 +1,5 @@
 import type { AppSettings, Language } from '../types';
+import { AppError } from './errors';
 
 /**
  * Provider-agnostic speech-to-text controller used to grade recorded lines.
@@ -16,7 +17,24 @@ export interface TranscriptionController {
   cancel(): void;
 }
 
-export class TranscriptionError extends Error {}
+export class TranscriptionError extends AppError {}
+
+/** Opens the microphone, turning permission and device failures into
+ *  user-facing errors. */
+async function getMicrophone(): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : '';
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      throw new TranscriptionError('micBlocked', 'Microphone access was blocked.');
+    }
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+      throw new TranscriptionError('noMicrophone', 'No microphone was found.');
+    }
+    throw err;
+  }
+}
 
 function pickRecorderMimeType(): string | undefined {
   const candidates = ['audio/webm', 'audio/mp4', 'audio/ogg'];
@@ -40,9 +58,9 @@ class WhisperController implements TranscriptionController {
 
   async start(): Promise<void> {
     if (!this.apiKey) {
-      throw new TranscriptionError('Missing OpenAI API key. Add one in Settings.');
+      throw new TranscriptionError('missingApiKey', 'Missing OpenAI API key. Add one in Settings.');
     }
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.stream = await getMicrophone();
     const mimeType = pickRecorderMimeType();
     this.mediaRecorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
     this.chunks = [];
@@ -55,7 +73,7 @@ class WhisperController implements TranscriptionController {
   stop(): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.mediaRecorder) {
-        reject(new TranscriptionError('Recording was not started.'));
+        reject(new TranscriptionError('recordingNotStarted', 'Recording was not started.'));
         return;
       }
       this.mediaRecorder.onstop = async () => {
@@ -96,7 +114,11 @@ class WhisperController implements TranscriptionController {
     });
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new TranscriptionError(`Whisper API error (${response.status}): ${errText}`);
+      throw new TranscriptionError(
+        'whisperApi',
+        `Whisper API error (${response.status}): ${errText}`,
+        { status: response.status, detail: errText }
+      );
     }
     const data = (await response.json()) as { text: string };
     return data.text ?? '';
@@ -148,17 +170,21 @@ function speechErrorFor(code: string): TranscriptionError | null {
       return null;
     case 'not-allowed':
     case 'service-not-allowed':
-      return new TranscriptionError('Microphone access was blocked.');
+      return new TranscriptionError('micBlocked', 'Microphone access was blocked.');
     case 'audio-capture':
-      return new TranscriptionError('No microphone was found.');
+      return new TranscriptionError('noMicrophone', 'No microphone was found.');
     case 'network':
-      return new TranscriptionError('Speech recognition needs an internet connection.');
+      return new TranscriptionError(
+        'speechNetwork',
+        'Speech recognition needs an internet connection.'
+      );
     case 'language-not-supported':
       return new TranscriptionError(
+        'speechLanguageUnsupported',
         "This browser can't recognize speech in the script's language. Try Whisper in Settings."
       );
     default:
-      return new TranscriptionError(`Speech recognition error: ${code}`);
+      return new TranscriptionError('speechError', `Speech recognition error: ${code}`, { code });
   }
 }
 
@@ -196,6 +222,7 @@ export class WebSpeechController implements TranscriptionController {
     if (!Ctor) {
       return Promise.reject(
         new TranscriptionError(
+          'speechUnsupported',
           'Speech recognition is not supported in this browser. Try Chrome or Safari, or switch to Whisper in Settings.'
         )
       );
@@ -235,14 +262,24 @@ export class WebSpeechController implements TranscriptionController {
       recognition.onend = () => {
         this.ended = true;
         if (!started) {
-          reject(this.error ?? new TranscriptionError('Speech recognition stopped before it started.'));
+          reject(
+            this.error ??
+              new TranscriptionError(
+                'speechStoppedEarly',
+                'Speech recognition stopped before it started.'
+              )
+          );
         }
         this.onEnded?.();
       };
       try {
         recognition.start();
       } catch (err) {
-        reject(err instanceof Error ? err : new TranscriptionError(String(err)));
+        reject(
+          err instanceof Error
+            ? err
+            : new TranscriptionError('speechError', String(err), { code: String(err) })
+        );
       }
     });
   }

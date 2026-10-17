@@ -26,7 +26,8 @@
     "exportHint": "Share this script as a file (via WhatsApp, email, etc.) or download it, so friends can use it without re-editing.",
     "importTitle": "Import a shared script",
     "importHint": "Import a .linelearner.json file someone shared with you (e.g. a friend's already-corrected script) to skip re-editing it yourself.",
-    "confirmDelete": "Delete \"{{title}}\"? This can’t be undone."
+    "confirmDelete": "Delete \"{{title}}\"? This can’t be undone.",
+    "untitled": "Untitled script"
   },
   "editor": {
     "title": "Review & correct",
@@ -78,7 +79,8 @@
     "needsWork": "Looks like you missed something. Check the line again.",
     "tryAgain": "Try again",
     "recordingError": "Recording failed",
-    "micPermissionHint": "Make sure to allow microphone access when prompted."
+    "micPermissionHint": "Make sure to allow microphone access when prompted.",
+    "scriptNotFound": "This script was not found."
   },
   "settings": {
     "title": "Settings",
@@ -101,6 +103,24 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "back": "Back",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "close": "Close"
+  },
+  "errors": {
+    "noLinesDetected": "No lines could be detected in this script.",
+    "fileInvalidJson": "This file is not valid JSON.",
+    "fileNotAnExport": "This file was not recognized as a Line Learner script export.",
+    "fileNewerVersion": "This script was exported by a newer version of the app and cannot be imported here.",
+    "fileMalformed": "This script file is missing or has malformed data.",
+    "speechUnsupported": "Speech recognition is not supported in this browser. Try Chrome or Safari, or switch to Whisper in Settings.",
+    "missingApiKey": "Missing OpenAI API key. Add one in Settings.",
+    "recordingNotStarted": "Recording was not started.",
+    "whisperApi": "Whisper API error ({{status}}): {{detail}}",
+    "micBlocked": "Microphone access was blocked.",
+    "noMicrophone": "No microphone was found.",
+    "speechNetwork": "Speech recognition needs an internet connection.",
+    "speechLanguageUnsupported": "This browser can't recognize speech in the script's language. Try Whisper in Settings.",
+    "speechStoppedEarly": "Speech recognition stopped before it started.",
+    "speechError": "Speech recognition error: {{code}}"
   }
 }
