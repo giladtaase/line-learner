@@ -18,9 +18,11 @@ const DIRECTION_WRAPPERS = /^[(\[].*[)\]]$/;
 // Scene/act heading lines, e.g. "תמונה 1", "תמונה א'", "מערכה שנייה", "SCENE 1",
 // "ACT TWO", "Scene 3: The garden". Matched as a standalone line (optionally
 // followed by a title after a colon/dash), case-insensitive for English,
-// and with or without Hebrew geresh (') on letter-numerals.
+// and with or without Hebrew geresh (') on letter-numerals. The (?![a-z])
+// after scene/act stops words that merely start with them ("ACTOR:",
+// "Actually, ...", "Scenery ...") from being mistaken for headings.
 const SCENE_HEADING =
-  /^(?:(?:תמונה|מערכה|פרק)\s*[\u0590-\u05FF'׳\d]*|(?:scene|act)\s*[\divxlcIVXLC]*)\s*[:.\-–]?\s*(.*)$/i;
+  /^(?:(?:תמונה|מערכה|פרק)\s*[\u0590-\u05FF'׳\d]*|(?:scene|act)(?![a-z])\s*[\divxlcIVXLC]*)\s*[:.\-–]?\s*(.*)$/i;
 
 function isSceneHeading(line: string): boolean {
   const trimmed = line.trim();
@@ -29,8 +31,10 @@ function isSceneHeading(line: string): boolean {
 }
 
 // A character cue line looks like "ROMEO:", "JULIET.", "יוליה:", "רומיאו." etc.
-// Allow letters (incl. Hebrew), spaces, dots, numbers (e.g. "GUARD 1"), and hyphens in the name.
-const CUE_LINE = /^([A-Za-z\u0590-\u05FF][A-Za-z\u0590-\u05FF '.-]{0,40}?)\s*[:.]\s*(.*)$/;
+// Allow letters (incl. Hebrew), spaces, dots, numbers (e.g. "GUARD 1"), and hyphens in the name,
+// plus "," and "&" for joint cues ("ALON & OREN", "A, B and C" -- see JOINT_SEPARATORS). Group 2 is the
+// separator; joint cues containing "," or "&" are only accepted with ":" (see below).
+const CUE_LINE = /^([A-Za-z\u0590-\u05FF][A-Za-z\u0590-\u05FF\d '.,&-]{0,40}?)\s*([:.])\s*(.*)$/;
 
 // Candidate split points for a joint character cue like "ALON and OREN",
 // "אלון ואורן", "אלון, אורן ודנה", or "ALON & OREN". These are only ever
@@ -157,8 +161,15 @@ function extractRawCues(
     const cueMatch = rawLine.match(CUE_LINE);
     if (cueMatch) {
       const name = cueMatch[1].trim();
-      const rest = cueMatch[2];
-      const looksLikeName = name.split(/\s+/).length <= 4 && isAllCapsName(name);
+      const separator = cueMatch[2];
+      const rest = cueMatch[3];
+      // A "," or "&" before a final "." is far more likely to be an ordinary
+      // sentence (e.g. Hebrew "כן, אני בא.", which has no letter case to rule
+      // it out) than a joint cue, so those require an explicit ":".
+      const looksLikeName =
+        name.split(/\s+/).length <= 4 &&
+        isAllCapsName(name) &&
+        (separator === ':' || !/[,&]/.test(name));
       if (looksLikeName) {
         if (rest.length > 0) {
           result.push({ rawName: name, text: rest, kind: 'line' });
