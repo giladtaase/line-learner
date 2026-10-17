@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
@@ -12,9 +12,12 @@ export default function ScriptEditorPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [script, setScript] = useState<Script | null>(null);
+  // Entries as edited; joint-cue resolution and the character list are
+  // derived from them below rather than kept in separate state.
   const [entries, setEntries] = useState<ScriptEntry[]>([]);
-  const [characters, setCharacters] = useState<string[]>([]);
   const [myCharacters, setMyCharacters] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -22,42 +25,52 @@ export default function ScriptEditorPage() {
       if (!s) return;
       setScript(s);
       setEntries(s.entries);
-      setCharacters(s.characters);
-      const existing = getMyCharacters(s);
-      setMyCharacters(existing.length > 0 ? existing : s.characters.slice(0, 1));
+      // No role is preselected: guessing one (e.g. the first name
+      // alphabetically) would silently start practice as the wrong character.
+      setMyCharacters(getMyCharacters(s));
     });
   }, [id]);
 
-  function applyRecompute(next: ScriptEntry[]): ScriptEntry[] {
-    const { entries: resolved, characters: list } = recomputeEntryCharacters(next);
-    setCharacters(list);
-    setMyCharacters((prev) => {
-      const stillValid = prev.filter((c) => list.includes(c));
-      return stillValid.length > 0 ? stillValid : list.slice(0, 1);
-    });
-    return resolved;
+  const resolved = useMemo(() => recomputeEntryCharacters(entries), [entries]);
+  const characters = resolved.characters;
+  // Ignore selections for characters that no longer exist after edits.
+  const selectedCharacters = myCharacters.filter((c) => characters.includes(c));
+
+  useEffect(() => {
+    if (!dirty) return;
+    // Warn before closing/reloading the tab with unsaved edits.
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
+
+  function editEntries(change: (prev: ScriptEntry[]) => ScriptEntry[]) {
+    setEntries(change);
+    setDirty(true);
   }
 
   function toggleMyCharacter(name: string) {
     setMyCharacters((prev) =>
       prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
     );
+    setDirty(true);
+    setSaveError(null);
   }
 
   function updateEntry(index: number, patch: Partial<ScriptEntry>) {
-    setEntries((prev) => {
+    editEntries((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], ...patch };
-      return applyRecompute(next);
+      return next;
     });
   }
 
   function removeEntry(index: number) {
-    setEntries((prev) => applyRecompute(prev.filter((_, i) => i !== index)));
+    editEntries((prev) => prev.filter((_, i) => i !== index));
   }
 
   function moveEntry(index: number, direction: -1 | 1) {
-    setEntries((prev) => {
+    editEntries((prev) => {
       const target = index + direction;
       if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
@@ -67,40 +80,51 @@ export default function ScriptEditorPage() {
   }
 
   function addRow(index: number) {
-    setEntries((prev) => {
+    editEntries((prev) => {
       const next = [...prev];
       next.splice(index + 1, 0, {
         id: uuid(),
         order: 0,
         type: 'line',
-        character: myCharacters[0] || characters[0] || '',
+        character: selectedCharacters[0] || characters[0] || '',
         text: ''
       });
-      return applyRecompute(next.map((e, i) => ({ ...e, order: i })));
+      return next;
     });
+  }
+
+  function normalizedEntries(): ScriptEntry[] {
+    return resolved.entries.map((e, i) => ({ ...e, order: i }));
+  }
+
+  function handleBack() {
+    if (dirty && !window.confirm(t('editor.unsavedChanges'))) return;
+    navigate('/');
   }
 
   async function handleSave() {
     if (!script) return;
-    const { entries: resolved, characters: list } = recomputeEntryCharacters(entries);
-    const normalized = resolved.map((e, i) => ({ ...e, order: i }));
+    if (selectedCharacters.length === 0) {
+      setSaveError(t('editor.chooseCharacterRequired'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     const updated: Script = {
       ...script,
-      entries: normalized,
-      characters: list,
+      entries: normalizedEntries(),
+      characters,
       myCharacter: undefined,
-      myCharacters: myCharacters.length > 0 ? myCharacters : undefined,
+      myCharacters: selectedCharacters,
       updatedAt: Date.now()
     };
     await db.scripts.put(updated);
+    setDirty(false);
     navigate(`/scripts/${script.id}/play`);
   }
 
   async function handleExport() {
     if (!script) return;
-    const { entries: resolved, characters: list } = recomputeEntryCharacters(entries);
-    const normalized = resolved.map((e, i) => ({ ...e, order: i }));
-    const exportScript = { ...script, entries: normalized, characters: list };
+    const exportScript = { ...script, entries: normalizedEntries(), characters };
     const shared = await shareScriptFile(exportScript);
     if (!shared) {
       // Not supported on this device/browser (typically desktop) — fall
@@ -122,7 +146,7 @@ export default function ScriptEditorPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           <button
-            onClick={() => navigate('/')}
+            onClick={handleBack}
             className="border px-4 py-2 rounded hover:bg-slate-50"
           >
             {t('common.back')}
@@ -146,6 +170,7 @@ export default function ScriptEditorPage() {
       <div className="bg-white rounded-lg shadow p-4 space-y-2">
         <label className="font-medium text-sm block">{t('scripts.myCharacter')}</label>
         <p className="text-xs text-slate-500">{t('scripts.chooseCharacter')}</p>
+        {saveError && <p className="text-sm text-red-600">{saveError}</p>}
         <div className="flex flex-wrap gap-2">
           {characters.map((c) => {
             const selected = myCharacters.includes(c);
@@ -244,7 +269,7 @@ export default function ScriptEditorPage() {
       </div>
 
       <div className="flex justify-end gap-2 pb-6">
-        <button onClick={() => navigate('/')} className="border px-4 py-2 rounded hover:bg-slate-50">
+        <button onClick={handleBack} className="border px-4 py-2 rounded hover:bg-slate-50">
           {t('common.back')}
         </button>
         <button

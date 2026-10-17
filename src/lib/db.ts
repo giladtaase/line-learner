@@ -41,11 +41,29 @@ const LEGACY_DEFAULT_LENIENCY = 0.72;
 // anyone who deliberately chose Whisper untouched.
 const LEGACY_DEFAULT_PROVIDER: AppSettings['transcriptionProvider'] = 'whisper';
 
+/** Picks the first-run UI language from the browser's preferred languages
+ *  ("iw" is the legacy code for Hebrew some browsers still report). */
+export function detectUiLanguage(): AppSettings['uiLanguage'] {
+  const preferred =
+    typeof navigator === 'undefined'
+      ? []
+      : navigator.languages?.length
+        ? navigator.languages
+        : [navigator.language];
+  for (const lang of preferred) {
+    const code = lang?.toLowerCase().split('-')[0];
+    if (code === 'he' || code === 'iw') return 'he';
+    if (code === 'en') return 'en';
+  }
+  return DEFAULT_SETTINGS.uiLanguage;
+}
+
 export async function getSettings(): Promise<AppSettings> {
   const existing = await db.settings.get('settings');
   if (!existing) {
-    await db.settings.put(DEFAULT_SETTINGS);
-    return DEFAULT_SETTINGS;
+    const initial: AppSettings = { ...DEFAULT_SETTINGS, uiLanguage: detectUiLanguage() };
+    await db.settings.put(initial);
+    return initial;
   }
   let migrated = existing;
   let changed = false;

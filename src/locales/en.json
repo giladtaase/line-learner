@@ -25,7 +25,8 @@
     "export": "Share / Export",
     "exportHint": "Share this script as a file (via WhatsApp, email, etc.) or download it, so friends can use it without re-editing.",
     "importTitle": "Import a shared script",
-    "importHint": "Import a .linelearner.json file someone shared with you (e.g. a friend's already-corrected script) to skip re-editing it yourself."
+    "importHint": "Import a .linelearner.json file someone shared with you (e.g. a friend's already-corrected script) to skip re-editing it yourself.",
+    "confirmDelete": "Delete \"{{title}}\"? This can’t be undone."
   },
   "editor": {
     "title": "Review & correct",
@@ -39,7 +40,9 @@
     "addRow": "Add row",
     "removeRow": "Remove",
     "moveUp": "Move up",
-    "moveDown": "Move down"
+    "moveDown": "Move down",
+    "unsavedChanges": "You have unsaved changes. Leave without saving?",
+    "chooseCharacterRequired": "Choose at least one character you play before saving."
   },
   "player": {
     "readthrough": "Full read-through",

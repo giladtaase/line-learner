@@ -73,7 +73,12 @@ class WhisperController implements TranscriptionController {
   }
 
   cancel(): void {
-    this.mediaRecorder?.stop();
+    // Calling stop() on an already-stopped recorder throws, e.g. when
+    // cancelling while a stopped clip is being transcribed.
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.onstop = null;
+      this.mediaRecorder.stop();
+    }
     this.stream?.getTracks().forEach((t) => t.stop());
   }
 
@@ -100,17 +105,66 @@ class WhisperController implements TranscriptionController {
 
 // Minimal shape of the non-standard Web Speech API, which TypeScript's DOM
 // lib doesn't fully type across browsers.
-interface SpeechRecognitionLike extends EventTarget {
+interface SpeechRecognitionLike {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
   start(): void;
   stop(): void;
   abort(): void;
+  onstart: (() => void) | null;
   onresult: ((event: unknown) => void) | null;
   onerror: ((event: unknown) => void) | null;
   onend: (() => void) | null;
 }
+
+export type SpeechResultList = ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
+
+/**
+ * Builds the transcript from a SpeechRecognition result list. In continuous
+ * mode the list holds every result of the session so far (not just new ones),
+ * so the transcript must be rebuilt from scratch on each event. Appending
+ * would repeat earlier phrases.
+ */
+export function transcriptFromResults(results: SpeechResultList): {
+  final: string;
+  interim: string;
+} {
+  const finals: string[] = [];
+  const interims: string[] = [];
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    (result.isFinal ? finals : interims).push(result[0].transcript.trim());
+  }
+  return { final: finals.join(' ').trim(), interim: interims.join(' ').trim() };
+}
+
+/** Maps a SpeechRecognition error code to a user-facing error, or null for
+ *  codes that just mean "nothing was heard" or "we aborted it ourselves". */
+function speechErrorFor(code: string): TranscriptionError | null {
+  switch (code) {
+    case 'no-speech':
+    case 'aborted':
+      return null;
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return new TranscriptionError('Microphone access was blocked.');
+    case 'audio-capture':
+      return new TranscriptionError('No microphone was found.');
+    case 'network':
+      return new TranscriptionError('Speech recognition needs an internet connection.');
+    case 'language-not-supported':
+      return new TranscriptionError(
+        "This browser can't recognize speech in the script's language. Try Whisper in Settings."
+      );
+    default:
+      return new TranscriptionError(`Speech recognition error: ${code}`);
+  }
+}
+
+// How long stop() waits for the browser's `end` event before giving up and
+// returning what it has, so the UI can't hang on "Transcribing..." forever.
+export const WEB_SPEECH_STOP_TIMEOUT_MS = 4000;
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | undefined {
   const w = window as unknown as {
@@ -124,52 +178,107 @@ export function isWebSpeechSupported(): boolean {
   return !!getSpeechRecognitionCtor();
 }
 
-class WebSpeechController implements TranscriptionController {
+export class WebSpeechController implements TranscriptionController {
   private recognition: SpeechRecognitionLike | null = null;
-  private finalTranscript = '';
+  private finalText = '';
+  private interimText = '';
+  private error: TranscriptionError | null = null;
+  // The browser can end recognition on its own (e.g. after a stretch of
+  // silence, or on an error) before the user taps stop, so `end` may already
+  // have fired by the time stop() is called.
+  private ended = false;
+  private onEnded: (() => void) | null = null;
 
   constructor(private language: Language) {}
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
-      throw new TranscriptionError(
-        'Speech recognition is not supported in this browser. Try Chrome or Safari, or switch to Whisper in Settings.'
+      return Promise.reject(
+        new TranscriptionError(
+          'Speech recognition is not supported in this browser. Try Chrome or Safari, or switch to Whisper in Settings.'
+        )
       );
     }
-    this.finalTranscript = '';
-    this.recognition = new Ctor();
-    this.recognition.lang = this.language === 'he' ? 'he-IL' : 'en-US';
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.onresult = (event: unknown) => {
-      const e = event as { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> };
-      let interim = '';
-      for (let i = 0; i < e.results.length; i++) {
-        const result = e.results[i];
-        if (result.isFinal) {
-          this.finalTranscript += result[0].transcript + ' ';
-        } else {
-          interim += result[0].transcript;
+    this.finalText = '';
+    this.interimText = '';
+    this.error = null;
+    this.ended = false;
+    this.onEnded = null;
+    const recognition = new Ctor();
+    this.recognition = recognition;
+    recognition.lang = this.language === 'he' ? 'he-IL' : 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    // Resolves once the browser is actually listening, so a blocked
+    // microphone is reported right away instead of only when stopping.
+    return new Promise((resolve, reject) => {
+      let started = false;
+      recognition.onstart = () => {
+        started = true;
+        resolve();
+      };
+      recognition.onresult = (event: unknown) => {
+        const { final, interim } = transcriptFromResults(
+          (event as { results: SpeechResultList }).results
+        );
+        this.finalText = final;
+        this.interimText = interim;
+      };
+      recognition.onerror = (event: unknown) => {
+        const err = speechErrorFor((event as { error?: string }).error ?? 'unknown');
+        if (!err) return;
+        this.error = err;
+        if (!started) reject(err);
+      };
+      recognition.onend = () => {
+        this.ended = true;
+        if (!started) {
+          reject(this.error ?? new TranscriptionError('Speech recognition stopped before it started.'));
         }
+        this.onEnded?.();
+      };
+      try {
+        recognition.start();
+      } catch (err) {
+        reject(err instanceof Error ? err : new TranscriptionError(String(err)));
       }
-      void interim; // Interim results aren't surfaced yet; only the final transcript is used for grading.
-    };
-    this.recognition.start();
+    });
   }
 
   stop(): Promise<string> {
-    return new Promise((resolve) => {
-      if (!this.recognition) {
-        resolve('');
+    const recognition = this.recognition;
+    if (!recognition) return Promise.resolve('');
+    return new Promise((resolve, reject) => {
+      const settle = () => {
+        this.onEnded = null;
+        if (this.error) {
+          reject(this.error);
+        } else {
+          // Normally the last phrase is finalized before `end`; if it wasn't
+          // (timeout, or the browser ended early), keep the interim words too.
+          resolve(`${this.finalText} ${this.interimText}`.trim());
+        }
+      };
+      if (this.ended) {
+        settle();
         return;
       }
-      this.recognition.onend = () => resolve(this.finalTranscript.trim());
-      this.recognition.stop();
+      const timer = setTimeout(() => {
+        recognition.abort();
+        settle();
+      }, WEB_SPEECH_STOP_TIMEOUT_MS);
+      this.onEnded = () => {
+        clearTimeout(timer);
+        settle();
+      };
+      recognition.stop();
     });
   }
 
   cancel(): void {
+    this.onEnded = null;
     this.recognition?.abort();
   }
 }

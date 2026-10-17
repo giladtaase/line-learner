@@ -68,9 +68,10 @@ export default function ScriptsListPage() {
     await createFromText(pastedText, 'Untitled script');
   }
 
-  async function handleDelete(id: string) {
-    await db.scripts.delete(id);
-    await db.attempts.where('scriptId').equals(id).delete();
+  async function handleDelete(script: Script) {
+    if (!window.confirm(t('scripts.confirmDelete', { title: script.title }))) return;
+    await db.scripts.delete(script.id);
+    await db.attempts.where('scriptId').equals(script.id).delete();
   }
 
   async function handleExport(script: Script) {
@@ -210,7 +211,7 @@ export default function ScriptsListPage() {
                 {t('scripts.export')}
               </button>
               <button
-                onClick={() => handleDelete(script.id)}
+                onClick={() => handleDelete(script)}
                 className="text-sm text-red-600 border border-red-200 px-3 py-1.5 rounded hover:bg-red-50"
               >
                 {t('scripts.delete')}

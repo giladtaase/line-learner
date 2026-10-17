@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
@@ -6,6 +6,7 @@ import { db, getSettings, recordAttempt } from '../lib/db';
 import { speak, stopSpeaking, ensureVoicesLoaded } from '../lib/tts';
 import { gradeAttempt, stripInlineDirections } from '../lib/fuzzyMatch';
 import { getMyCharacters } from '../lib/scriptParser';
+import { runPlayback } from '../lib/playback';
 import {
   createTranscriptionController,
   type TranscriptionController
@@ -60,7 +61,11 @@ export default function PlayerPage() {
   // to actually recall it before peeking — otherwise there's no real
   // memorization practice happening.
   const [revealMyLine, setRevealMyLine] = useState(false);
-  const stopRequested = useRef(false);
+  // Incremented whenever playback is (re)started or stopped. Each autoplay run
+  // remembers the id it started with and bails out as soon as it no longer
+  // matches, so a run left over from before a pause/jump can never keep going
+  // alongside the new one.
+  const playbackRunId = useRef(0);
   const transcriptionRef = useRef<TranscriptionController | null>(null);
 
   useEffect(() => {
@@ -74,20 +79,26 @@ export default function PlayerPage() {
   }, [id]);
 
   useEffect(() => {
-    // Clear any stale recording/grading feedback whenever we move to a different line.
+    // Clear any stale recording/grading feedback whenever we move to a different
+    // line, and abandon a recording still in progress for the previous one.
+    transcriptionRef.current?.cancel();
+    transcriptionRef.current = null;
     setGradeResult(null);
     setRecordingError(null);
     setRecordingState('idle');
     setRevealMyLine(false);
   }, [index]);
 
-  const myCharacters = script ? getMyCharacters(script) : [];
+  const myCharacters = useMemo(() => (script ? getMyCharacters(script) : []), [script]);
 
-  function isMine(entry: Script['entries'][number] | undefined): boolean {
-    if (!entry || entry.type !== 'line' || myCharacters.length === 0) return false;
-    const candidates = entry.characters ?? (entry.character ? [entry.character] : []);
-    return candidates.some((c) => myCharacters.includes(c));
-  }
+  const isMine = useCallback(
+    (entry: Script['entries'][number] | undefined): boolean => {
+      if (!entry || entry.type !== 'line' || myCharacters.length === 0) return false;
+      const candidates = entry.characters ?? (entry.character ? [entry.character] : []);
+      return candidates.some((c) => myCharacters.includes(c));
+    },
+    [myCharacters]
+  );
 
   const currentEntry = script?.entries[index];
   const isMyLine = isMine(currentEntry);
@@ -97,28 +108,32 @@ export default function PlayerPage() {
     .filter((i) => i >= 0);
   const currentSceneNumber = sceneIndices.filter((i) => i <= index).length; // 1-based, 0 if before first scene
 
-  const advance = useCallback(() => {
-    setIndex((i) => Math.min(i + 1, (script?.entries.length ?? 1) - 1));
-  }, [script]);
-
-  const goPrev = useCallback(() => {
-    stopRequested.current = true;
+  const stopPlayback = useCallback(() => {
+    playbackRunId.current++;
     stopSpeaking();
     setPlaying(false);
-    setIndex((i) => Math.max(i - 1, 0));
   }, []);
 
+  useEffect(() => {
+    // Stop speaking and abandon any recording when leaving the page.
+    return () => {
+      stopPlayback();
+      transcriptionRef.current?.cancel();
+    };
+  }, [stopPlayback]);
+
+  const goPrev = useCallback(() => {
+    stopPlayback();
+    setIndex((i) => Math.max(i - 1, 0));
+  }, [stopPlayback]);
+
   const goNext = useCallback(() => {
-    stopRequested.current = true;
-    stopSpeaking();
-    setPlaying(false);
+    stopPlayback();
     setIndex((i) => Math.min(i + 1, (script?.entries.length ?? 1) - 1));
-  }, [script]);
+  }, [script, stopPlayback]);
 
   function jumpToIndex(i: number) {
-    stopRequested.current = true;
-    stopSpeaking();
-    setPlaying(false);
+    stopPlayback();
     setIndex(i);
     setShowJumpTo(false);
     setJumpToSceneIdx(null);
@@ -159,16 +174,20 @@ export default function PlayerPage() {
       await controller.start();
       setRecordingState('recording');
     } catch (err) {
+      transcriptionRef.current = null;
       setRecordingError(err instanceof Error ? err.message : String(err));
       setRecordingState('idle');
     }
   }
 
   async function handleStopRecording() {
-    if (!transcriptionRef.current || !currentEntry || !script) return;
+    const controller = transcriptionRef.current;
+    if (!controller || !currentEntry || !script) return;
     setRecordingState('processing');
     try {
-      const transcript = await transcriptionRef.current.stop();
+      const transcript = await controller.stop();
+      // Moved to another line (or cancelled) while transcribing: drop the result.
+      if (transcriptionRef.current !== controller) return;
       const settingsNow = settings ?? (await getSettings());
       const { similarity, passed } = gradeAttempt(
         currentEntry.text,
@@ -187,10 +206,15 @@ export default function PlayerPage() {
         passed
       });
     } catch (err) {
-      setRecordingError(err instanceof Error ? err.message : String(err));
+      if (transcriptionRef.current === controller) {
+        setRecordingError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setRecordingState('idle');
-      transcriptionRef.current = null;
+      // Only reset if a newer recording hasn't taken over in the meantime.
+      if (transcriptionRef.current === controller) {
+        setRecordingState('idle');
+        transcriptionRef.current = null;
+      }
     }
   }
 
@@ -200,54 +224,54 @@ export default function PlayerPage() {
     setRecordingState('idle');
   }
 
-  const runAutoPlay = useCallback(async () => {
-    if (!script) return;
-    stopRequested.current = false;
-    setPlaying(true);
-    let i = index;
-    while (i < script.entries.length && !stopRequested.current) {
-      const entry = script.entries[i];
-      const mine = isMine(entry);
-      setIndex(i);
-      if (mine) {
-        // Pause here; the user records/says their line and taps Continue.
-        setPlaying(false);
-        return;
-      }
-      if (entry.type === 'line' && otherLinesMode === 'speak') {
-        await speak(stripInlineDirections(entry.text), script.language, settings?.ttsRate ?? 1);
-      } else {
-        // Give a moment to read displayed text/direction/scene heading before advancing.
-        const pause = entry.type === 'direction' ? 700 : entry.type === 'scene' ? 1000 : 1400;
-        await new Promise((r) => setTimeout(r, pause));
-      }
-      i++;
-    }
-    setIndex(Math.min(i, script.entries.length - 1));
-    setPlaying(false);
-  }, [script, index, otherLinesMode, settings]);
+  const runAutoPlay = useCallback(
+    async (startIndex: number) => {
+      if (!script) return;
+      stopSpeaking();
+      const runId = ++playbackRunId.current;
+      const isCancelled = () => playbackRunId.current !== runId;
+      setPlaying(true);
+      await runPlayback({
+        entries: script.entries,
+        startIndex,
+        isMine,
+        onIndex: setIndex,
+        isCancelled,
+        perform: async (entry) => {
+          if (entry.type === 'line' && otherLinesMode === 'speak') {
+            await speak(stripInlineDirections(entry.text), script.language, settings?.ttsRate ?? 1);
+          } else {
+            // Give a moment to read displayed text/direction/scene heading before advancing.
+            const pause = entry.type === 'direction' ? 700 : entry.type === 'scene' ? 1000 : 1400;
+            await new Promise((r) => setTimeout(r, pause));
+          }
+        }
+      });
+      // A cancelled run leaves `playing` to whoever cancelled it (a pause,
+      // jump, or a newer run that is now playing).
+      if (!isCancelled()) setPlaying(false);
+    },
+    [script, isMine, otherLinesMode, settings]
+  );
 
   function handlePlay() {
-    runAutoPlay();
+    runAutoPlay(index);
   }
 
   function handlePause() {
-    stopRequested.current = true;
-    stopSpeaking();
-    setPlaying(false);
+    stopPlayback();
   }
 
   function handleStop() {
-    stopRequested.current = true;
-    stopSpeaking();
-    setPlaying(false);
+    stopPlayback();
     setIndex(0);
   }
 
   function handleContinueAfterMyLine() {
-    advance();
-    // Resume autoplay from the next entry.
-    setTimeout(() => runAutoPlay(), 0);
+    if (!script || index >= script.entries.length - 1) return;
+    // Pass the next index explicitly: `index` in this render still points at
+    // the user's own line, and restarting from there would pause right away.
+    runAutoPlay(index + 1);
   }
 
   if (!script) {

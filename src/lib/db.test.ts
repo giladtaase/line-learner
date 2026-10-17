@@ -1,5 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { db, DEFAULT_SETTINGS, getSettings, saveSettings, recordAttempt } from './db';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  db,
+  DEFAULT_SETTINGS,
+  detectUiLanguage,
+  getSettings,
+  saveSettings,
+  recordAttempt
+} from './db';
 import type { AppSettings, LineAttempt } from '../types';
 
 beforeEach(async () => {
@@ -12,6 +19,15 @@ describe('getSettings', () => {
     const settings = await getSettings();
     expect(settings).toEqual(DEFAULT_SETTINGS);
     expect(await db.settings.get('settings')).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("uses the browser's preferred language for the UI on first run", async () => {
+    const spy = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['he-IL', 'en-US']);
+    try {
+      expect((await getSettings()).uiLanguage).toBe('he');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('defaults to the free browser transcription engine', () => {
@@ -90,5 +106,29 @@ describe('recordAttempt', () => {
     };
     await recordAttempt(attempt);
     expect(await db.attempts.where('scriptId').equals('s1').toArray()).toEqual([attempt]);
+  });
+});
+
+describe('detectUiLanguage', () => {
+  function withLanguages(languages: string[], fn: () => void) {
+    const spy = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages);
+    try {
+      fn();
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('picks the first supported language in preference order', () => {
+    withLanguages(['fr-FR', 'he-IL', 'en-US'], () => expect(detectUiLanguage()).toBe('he'));
+    withLanguages(['en-GB', 'he'], () => expect(detectUiLanguage()).toBe('en'));
+  });
+
+  it('recognizes the legacy "iw" code for Hebrew', () => {
+    withLanguages(['iw-IL'], () => expect(detectUiLanguage()).toBe('he'));
+  });
+
+  it('falls back to English when no supported language is preferred', () => {
+    withLanguages(['fr-FR', 'de'], () => expect(detectUiLanguage()).toBe('en'));
   });
 });
