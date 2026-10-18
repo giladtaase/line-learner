@@ -4,7 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
-import { parseScript, extractTextFromFile, getMyCharacters } from '../lib/scriptParser';
+import {
+  parseScript,
+  extractTextFromFile,
+  getMyCharacters,
+  type ParseResult
+} from '../lib/scriptParser';
+import { useSettings } from '../settings/context';
 import { exportScript, parseScriptFile, scriptFileToNewScript } from '../lib/scriptFile';
 import { AppError } from '../lib/errors';
 import { useErrorMessage } from '../hooks/useErrorMessage';
@@ -15,10 +21,17 @@ export default function ScriptsListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const errorMessage = useErrorMessage();
+  const { settings } = useSettings();
+  const anthropicKey = settings.anthropicApiKey ?? '';
+  // On by default once a key is set; the checkbox can turn it off per upload.
+  const [useAi, setUseAi] = useState(true);
+  const aiSelected = useAi && anthropicKey !== '';
   const scripts = useLiveQuery(() => db.scripts.orderBy('updatedAt').reverse().toArray(), []);
   const [pastedText, setPastedText] = useState('');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Fraction of the script the AI has labelled so far, while an AI parse runs. */
+  const [aiProgress, setAiProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -36,8 +49,16 @@ export default function ScriptsListPage() {
     }
   }
 
+  async function parse(rawText: string): Promise<ParseResult> {
+    if (!aiSelected) return parseScript(rawText);
+    // Loaded on demand: the SDK only downloads for people who parse with AI.
+    const { parseScriptWithAI } = await import('../lib/aiParser');
+    setAiProgress(0);
+    return parseScriptWithAI(rawText, anthropicKey, { onProgress: setAiProgress });
+  }
+
   async function createFromText(rawText: string, fallbackTitle: string) {
-    const { language, entries, characters } = parseScript(rawText);
+    const { language, entries, characters } = await parse(rawText);
     if (entries.length === 0) {
       throw new AppError('noLinesDetected', 'No lines could be detected in this script.');
     }
@@ -107,6 +128,21 @@ export default function ScriptsListPage() {
           />
         </div>
 
+        <div className="rounded border border-slate-200 bg-slate-50 p-3 space-y-1">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={aiSelected}
+              disabled={!anthropicKey || busy}
+              onChange={(e) => setUseAi(e.target.checked)}
+            />
+            {t('scripts.useAi')}
+          </label>
+          <p className="text-xs text-slate-500">
+            {anthropicKey ? t('scripts.useAiHint') : t('scripts.useAiNoKey')}
+          </p>
+        </div>
+
         <div className="flex items-center gap-3">
           <input
             ref={fileInputRef}
@@ -139,6 +175,27 @@ export default function ScriptsListPage() {
           >
             {busy ? t('scripts.parsing') : t('scripts.parse')}
           </Button>
+          {busy && aiSelected && (
+            <div className="mt-2" role="status">
+              <p className="text-sm text-slate-500">
+                {aiProgress > 0
+                  ? t('scripts.parsingWithAiProgress', { percent: Math.round(aiProgress * 100) })
+                  : t('scripts.parsingWithAi')}
+              </p>
+              <div
+                className="mt-1 h-2 rounded bg-slate-200 overflow-hidden"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(aiProgress * 100)}
+              >
+                <div
+                  className="h-full bg-blue-500 transition-[width] duration-500"
+                  style={{ width: `${aiProgress * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (

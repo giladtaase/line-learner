@@ -9,9 +9,11 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:parser": "vite-node eval/run.ts --"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
     "i18next": "^23.16.8",
@@ -21,7 +23,8 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^15.1.4",
     "react-router-dom": "^6.28.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

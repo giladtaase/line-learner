@@ -82,7 +82,7 @@ export default function SettingsPage() {
           <div>
             <label htmlFor="api-key" className="block text-sm font-medium mb-1">{t('settings.apiKey')}</label>
             <input
-            id="api-key"
+              id="api-key"
               type="password"
               value={settings.openAiApiKey ?? ''}
               onChange={(e) => update({ openAiApiKey: e.target.value })}
@@ -92,6 +92,22 @@ export default function SettingsPage() {
             <p className="text-xs text-slate-500 mt-1">{t('settings.apiKeyHint')}</p>
           </div>
         )}
+
+        <div>
+          <label htmlFor="anthropic-key" className="block text-sm font-medium mb-1">
+            {t('settings.anthropicApiKey')}
+          </label>
+          <input
+            id="anthropic-key"
+            type="password"
+            autoComplete="off"
+            value={settings.anthropicApiKey ?? ''}
+            onChange={(e) => update({ anthropicApiKey: e.target.value.trim() })}
+            className="border rounded px-2 py-1 w-full"
+            placeholder="sk-ant-..."
+          />
+          <p className="text-xs text-slate-500 mt-1">{t('settings.anthropicApiKeyHint')}</p>
+        </div>
 
         <div>
           <label htmlFor="tts-rate" className="block text-sm font-medium mb-1">

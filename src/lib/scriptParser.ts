@@ -120,7 +120,7 @@ function isAllCapsName(name: string): boolean {
   });
 }
 
-function detectLanguage(text: string): Language {
+export function detectLanguage(text: string): Language {
   const hebrewChars = (text.match(/[\u0590-\u05FF]/g) || []).length;
   const latinChars = (text.match(/[A-Za-z]/g) || []).length;
   return hebrewChars > latinChars ? 'he' : 'en';
@@ -293,6 +293,8 @@ async function extractTextFromDocx(file: File): Promise<string> {
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/<\/p>/gi, '\n')
     .replace(/<\/li>/gi, '\n')
+    // Scene headers are often Word headings, not plain paragraphs.
+    .replace(/<\/h[1-6]>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')

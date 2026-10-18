@@ -156,5 +156,8 @@ name, update the base path in both files.
 - More practice modes: cue, short cue, context only, random drill, and
   progressive hints. The `PracticeMode` type already reserves them.
 - Progress tracking that brings weak lines up more often.
+- Control over merging a character's young and adult versions (e.g. "איתן
+  הילד" and "איתן"). AI parsing merges them today, which is wrong when a
+  different actor plays the young version.
 - An optional fully offline speech-to-text model that runs in the browser
   (Whisper via Transformers.js).

@@ -19,7 +19,15 @@ export type AppErrorCode =
   | 'speechNetwork'
   | 'speechLanguageUnsupported'
   | 'speechStoppedEarly'
-  | 'speechError';
+  | 'speechError'
+  | 'aiNoKey'
+  | 'aiBadKey'
+  | 'aiRateLimited'
+  | 'aiNetwork'
+  | 'aiRefused'
+  | 'aiTooLong'
+  | 'aiInvalidResponse'
+  | 'aiFailed';
 
 export class AppError extends Error {
   constructor(

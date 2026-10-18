@@ -53,6 +53,8 @@ export interface AppSettings {
   defaultMyLineInputMode: MyLineInputMode;
   transcriptionProvider: TranscriptionProviderId;
   openAiApiKey?: string;
+  /** The user's own Anthropic key, for parsing scripts with Claude. */
+  anthropicApiKey?: string;
   ttsRate: number;
   leniencyThreshold: number; // 0-1, similarity ratio below which a correction is flagged
 }

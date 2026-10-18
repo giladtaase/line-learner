@@ -27,7 +27,12 @@
     "importTitle": "Import a shared script",
     "importHint": "Import a .linelearner.json file someone shared with you (e.g. a friend's already-corrected script) to skip re-editing it yourself.",
     "confirmDelete": "Delete \"{{title}}\"? This can’t be undone.",
-    "untitled": "Untitled script"
+    "untitled": "Untitled script",
+    "useAi": "Parse with AI (Claude)",
+    "useAiHint": "Better with messy scripts: title pages, cast lists, page numbers, unusual cue formats. The script's text is sent to Anthropic to be parsed.",
+    "useAiNoKey": "Add an Anthropic API key in Settings to use this.",
+    "parsingWithAi": "Parsing with AI… reading the script. A full play takes a few minutes.",
+    "parsingWithAiProgress": "Parsing with AI… {{percent}}% done"
   },
   "editor": {
     "title": "Review & correct",
@@ -97,7 +102,9 @@
     "leniency": "Correction leniency",
     "leniencyHint": "Higher = stricter grading of your recorded/typed lines.",
     "speak": "Speak",
-    "type": "Type"
+    "type": "Type",
+    "anthropicApiKey": "Anthropic API key (for AI parsing)",
+    "anthropicApiKeyHint": "Stored only on this device. Lets you parse scripts with Claude, which handles messy scripts better."
   },
   "common": {
     "cancel": "Cancel",
@@ -121,6 +128,14 @@
     "speechNetwork": "Speech recognition needs an internet connection.",
     "speechLanguageUnsupported": "This browser can't recognize speech in the script's language. Try Whisper in Settings.",
     "speechStoppedEarly": "Speech recognition stopped before it started.",
-    "speechError": "Speech recognition error: {{code}}"
+    "speechError": "Speech recognition error: {{code}}",
+    "aiNoKey": "Add an Anthropic API key in Settings to parse with AI.",
+    "aiBadKey": "The Anthropic API key was rejected. Check it in Settings.",
+    "aiRateLimited": "Too many AI requests right now. Try again in a minute.",
+    "aiNetwork": "Could not reach the AI service. Check your connection.",
+    "aiRefused": "The AI declined to parse this script. Try parsing without AI.",
+    "aiTooLong": "This script is too long to parse with AI in one go. Try splitting it, or parse without AI.",
+    "aiInvalidResponse": "The AI returned a result that could not be used ({{detail}}). Try again, or parse without AI.",
+    "aiFailed": "AI parsing failed: {{detail}}"
   }
 }
