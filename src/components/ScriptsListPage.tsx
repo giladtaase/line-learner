@@ -4,17 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
-import {
-  parseScript,
-  extractTextFromFile,
-  getMyCharacters,
-  type ParseResult
-} from '../lib/scriptParser';
+import { parseScript, getMyCharacters, type ParseResult } from '../lib/scriptParser';
+import { readScriptFile, SCRIPT_FILE_TYPES } from '../lib/readScriptFile';
 import { useSettings } from '../settings/context';
 import { exportScript, parseScriptFile, scriptFileToNewScript } from '../lib/scriptFile';
 import { AppError } from '../lib/errors';
 import { useErrorMessage } from '../hooks/useErrorMessage';
 import { Button } from './ui';
+import AiProgress, { type AiStatus } from './AiProgress';
 import type { Script } from '../types';
 
 export default function ScriptsListPage() {
@@ -30,8 +27,8 @@ export default function ScriptsListPage() {
   const [pastedText, setPastedText] = useState('');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
-  /** Fraction of the script the AI has labelled so far, while an AI parse runs. */
-  const [aiProgress, setAiProgress] = useState(0);
+  /** Progress of a Claude step (reading a PDF, AI parsing) while one runs. */
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -46,19 +43,23 @@ export default function ScriptsListPage() {
       setError(errorMessage(err));
     } finally {
       setBusy(false);
+      setAiStatus(null);
     }
   }
 
-  async function parse(rawText: string): Promise<ParseResult> {
+  async function parse(rawText: string, pdf?: ArrayBuffer): Promise<ParseResult> {
     if (!aiSelected) return parseScript(rawText);
     // Loaded on demand: the SDK only downloads for people who parse with AI.
     const { parseScriptWithAI } = await import('../lib/aiParser');
-    setAiProgress(0);
-    return parseScriptWithAI(rawText, anthropicKey, { onProgress: setAiProgress });
+    setAiStatus({ phase: 'parsing', fraction: 0 });
+    return parseScriptWithAI(rawText, anthropicKey, {
+      pdf,
+      onProgress: (fraction) => setAiStatus({ phase: 'parsing', fraction })
+    });
   }
 
-  async function createFromText(rawText: string, fallbackTitle: string) {
-    const { language, entries, characters } = await parse(rawText);
+  async function createFromText(rawText: string, fallbackTitle: string, pdf?: ArrayBuffer) {
+    const { language, entries, characters } = await parse(rawText, pdf);
     if (entries.length === 0) {
       throw new AppError('noLinesDetected', 'No lines could be detected in this script.');
     }
@@ -80,8 +81,10 @@ export default function ScriptsListPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     await withBusy(async () => {
-      const text = await extractTextFromFile(file);
-      await createFromText(text, file.name.replace(/\.[^.]+$/, ''));
+      const { text, pdf } = await readScriptFile(file, (page, pages) =>
+        setAiStatus({ phase: 'reading', page, pages })
+      );
+      await createFromText(text, file.name.replace(/\.[^.]+$/, ''), pdf);
     });
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
@@ -147,7 +150,7 @@ export default function ScriptsListPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".txt,.docx"
+            accept={SCRIPT_FILE_TYPES}
             aria-label={t('scripts.upload')}
             onChange={handleFileChange}
             disabled={busy}
@@ -175,27 +178,7 @@ export default function ScriptsListPage() {
           >
             {busy ? t('scripts.parsing') : t('scripts.parse')}
           </Button>
-          {busy && aiSelected && (
-            <div className="mt-2" role="status">
-              <p className="text-sm text-slate-500">
-                {aiProgress > 0
-                  ? t('scripts.parsingWithAiProgress', { percent: Math.round(aiProgress * 100) })
-                  : t('scripts.parsingWithAi')}
-              </p>
-              <div
-                className="mt-1 h-2 rounded bg-slate-200 overflow-hidden"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(aiProgress * 100)}
-              >
-                <div
-                  className="h-full bg-blue-500 transition-[width] duration-500"
-                  style={{ width: `${aiProgress * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
+          {busy && aiStatus && <AiProgress status={aiStatus} />}
         </div>
 
         {error && (

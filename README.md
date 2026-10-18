@@ -13,9 +13,15 @@ scripts and settings stay on your device in IndexedDB.
 
 ## Features
 
-- **Script import:** upload a `.txt` or `.docx` file, or paste text. A
+- **Script import:** upload a `.txt`, `.docx` or `.pdf` file, or paste text. A
   heuristic parser detects character cues, stage directions, and scene/act
-  headings in both English and Hebrew.
+  headings in both English and Hebrew. With an Anthropic API key, Claude can
+  parse instead: it copes with title pages, cast lists and unusual cues, and
+  for PDFs it looks at the pages to skip crossed-out text and editing notes.
+  Claude only labels lines; the text always comes from your file.
+- **Scene updates:** upload a file with new versions of some scenes (e.g. a
+  PDF of rewritten scenes 9-12). Scenes are matched by number, new ones are
+  slotted in order, and you see what will change before it is applied.
 - **Correction editor:** fix anything the parser got wrong before you
   practice: edit character names and text, change an entry's type (line,
   direction, scene), and reorder, add, or remove entries. Your edits are
@@ -31,8 +37,8 @@ scripts and settings stay on your device in IndexedDB.
   - Record yourself saying the line. The transcript is compared to the
     script with fuzzy matching that ignores inline stage directions and
     punctuation.
-  - Move with prev/next line, prev/next scene, or a jump-to picker grouped by
-    scene.
+  - Move with prev/next line, prev/next scene, skip to your next cue, or a
+    jump-to picker grouped by scene.
 - **Speech-to-text:** uses the browser Web Speech API by default, which is
   free and needs no key. You can switch to OpenAI Whisper in Settings with
   your own API key.
@@ -100,7 +106,8 @@ The microphone and PWA install only work on `localhost` or over HTTPS.
 ### Tech stack
 
 Vite, React 18, TypeScript, Tailwind CSS, Dexie (IndexedDB), i18next,
-react-router, mammoth (`.docx` parsing), and vite-plugin-pwa.
+react-router, mammoth (`.docx` parsing), pdf.js (`.pdf` text), the Anthropic
+SDK (optional AI parsing), and vite-plugin-pwa.
 
 ### Project layout
 

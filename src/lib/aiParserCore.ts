@@ -50,7 +50,7 @@ Block kinds:
 - "line": dialogue spoken by one or more characters. Keep a whole speech in one block, even when it continues over several source lines. If a speech is interrupted by a stage direction or a page break and then continues, the continuation is a new "line" block with the same speakers and an empty cue.
 - "direction": stage directions and descriptions that are not spoken, with or without brackets.
 - "scene": scene or act headings.
-- "skip": anything that is not part of the performed play: title page, author credit, cast or character lists, page numbers, running headers and footers, notes about the document.
+- "skip": anything that is not part of the performed play: title page, author credit, cast or character lists, page numbers, running headers and footers, notes about the document, editing or revision notes (such as "[[הערת עריכה: ...]]" or "עדכונים 11.10.26").
 
 For "line" blocks:
 - speakers: indices into "characters" of everyone who speaks it. A joint cue such as "ALON and OREN" or "אלון ואורן" lists both.
@@ -71,6 +71,25 @@ export function sourceLines(rawText: string): string[] {
 export function formatNumberedLines(lines: string[]): string {
   return lines.map((line, i) => `[${i + 1}] ${line}`).join('\n');
 }
+
+/** Prefix for the numbered lines naming characters the play already has, or "" if none. */
+export function formatKnownCharacters(names: string[]): string {
+  if (names.length === 0) return '';
+  return (
+    'These scenes belong to a longer play. Its characters so far are listed below; ' +
+    'when a cue refers to one of them (including by a nickname or another spelling), ' +
+    'use the listed name exactly as "name".\n' +
+    names.map((n) => `- ${n}`).join('\n') +
+    '\n\nThe script:\n'
+  );
+}
+
+/** Sent with the numbered lines when the PDF they were extracted from is attached. */
+export const PDF_CONTEXT_NOTE = `The attached PDF is the file these lines were extracted from. Use it to see how each line looks on the page:
+- Label "skip" any line that is crossed out (strikethrough), and editing or revision notes, which are often in a different color.
+- When part of a cue is crossed out and replaced (for example "אימא 2: 1:" with "2:" crossed out), the speakers are the ones not crossed out; the cue is still the whole label as it appears in the line.
+
+`;
 
 const BLOCK_START = /"start"\s*:\s*(\d+)/g;
 

@@ -5,7 +5,9 @@ import type { ParseResult } from './scriptParser';
 import {
   AiParseSchema,
   AI_PARSER_SYSTEM_PROMPT,
+  PDF_CONTEXT_NOTE,
   buildParseResult,
+  formatKnownCharacters,
   formatNumberedLines,
   lastBlockStart,
   sourceLines
@@ -23,22 +25,60 @@ export interface AiParseOptions {
   effort?: 'low' | 'medium' | 'high';
   /** Called with the fraction (0–1) of the script labelled so far, as the response streams in. */
   onProgress?: (fraction: number) => void;
+  /** Character names already in the play (when parsing an update to some of
+   *  its scenes), so the same people come back under the same names. */
+  knownCharacters?: string[];
+  /** The PDF the text was extracted from, attached so Claude can see
+   *  strikethrough and colored editing notes the extracted text can't show. */
+  pdf?: ArrayBuffer;
+}
+
+function createClient(apiKey: string): Anthropic {
+  if (!apiKey) throw new AppError('aiNoKey', 'Add an Anthropic API key in Settings to parse with AI.');
+  // The key is the user's own, entered on this device (like the OpenAI key
+  // for Whisper), so calling the API from the browser exposes it to no one else.
+  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+}
+
+/** Maps an API failure to an error the UI can show; AppErrors pass through. */
+function toAppError(err: unknown): unknown {
+  if (err instanceof AppError) return err;
+  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+    return new AppError('aiBadKey', 'The Anthropic API key was rejected. Check it in Settings.');
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return new AppError('aiRateLimited', 'Too many AI requests right now. Try again in a minute.');
+  }
+  if (err instanceof Anthropic.APIConnectionError) {
+    return new AppError('aiNetwork', 'Could not reach the AI service. Check your connection.');
+  }
+  if (err instanceof Anthropic.APIError) {
+    return new AppError('aiFailed', `AI parsing failed: ${err.message}`, { detail: err.message });
+  }
+  return err;
+}
+
+function checkStopReason(stopReason: string | null) {
+  if (stopReason === 'refusal') {
+    throw new AppError('aiRefused', 'The AI declined to parse this script.');
+  }
+  if (stopReason === 'max_tokens') {
+    throw new AppError('aiTooLong', 'This script is too long to parse with AI in one go.');
+  }
 }
 
 export async function parseScriptWithAI(
   rawText: string,
   apiKey: string,
-  { model = AI_PARSER_MODEL, effort = 'low', onProgress }: AiParseOptions = {}
+  { model = AI_PARSER_MODEL, effort = 'low', onProgress, knownCharacters = [], pdf }: AiParseOptions = {}
 ): Promise<ParseResult> {
-  if (!apiKey) throw new AppError('aiNoKey', 'Add an Anthropic API key in Settings to parse with AI.');
+  const client = createClient(apiKey);
   const lines = sourceLines(rawText);
   if (lines.length === 0) {
     throw new AppError('noLinesDetected', 'No lines could be detected in this script.');
   }
-
-  // The key is the user's own, entered on this device (like the OpenAI key
-  // for Whisper), so calling the API from the browser exposes it to no one else.
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const prompt =
+    (pdf ? PDF_CONTEXT_NOTE : '') + formatKnownCharacters(knownCharacters) + formatNumberedLines(lines);
 
   try {
     const stream = client.beta.messages.stream({
@@ -50,7 +90,20 @@ export async function parseScriptWithAI(
       fallbacks: 'default',
       output_config: { effort, format: betaZodOutputFormat(AiParseSchema) },
       system: AI_PARSER_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: formatNumberedLines(lines) }]
+      messages: [
+        {
+          role: 'user',
+          content: pdf
+            ? [
+                {
+                  type: 'document',
+                  source: { type: 'base64', media_type: 'application/pdf', data: toBase64(new Uint8Array(pdf)) }
+                },
+                { type: 'text', text: prompt }
+              ]
+            : prompt
+        }
+      ]
     });
     if (onProgress) {
       // Scan only the newest text, with a little overlap for a match split across deltas.
@@ -68,12 +121,7 @@ export async function parseScriptWithAI(
     }
     const message = await stream.finalMessage();
 
-    if (message.stop_reason === 'refusal') {
-      throw new AppError('aiRefused', 'The AI declined to parse this script.');
-    }
-    if (message.stop_reason === 'max_tokens') {
-      throw new AppError('aiTooLong', 'This script is too long to parse with AI in one go.');
-    }
+    checkStopReason(message.stop_reason);
     if (!message.parsed_output) {
       throw new AppError('aiInvalidResponse', 'The AI returned an unusable result.', {
         detail: 'no structured output'
@@ -81,19 +129,15 @@ export async function parseScriptWithAI(
     }
     return buildParseResult(lines, message.parsed_output);
   } catch (err) {
-    if (err instanceof AppError) throw err;
-    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
-      throw new AppError('aiBadKey', 'The Anthropic API key was rejected. Check it in Settings.');
-    }
-    if (err instanceof Anthropic.RateLimitError) {
-      throw new AppError('aiRateLimited', 'Too many AI requests right now. Try again in a minute.');
-    }
-    if (err instanceof Anthropic.APIConnectionError) {
-      throw new AppError('aiNetwork', 'Could not reach the AI service. Check your connection.');
-    }
-    if (err instanceof Anthropic.APIError) {
-      throw new AppError('aiFailed', `AI parsing failed: ${err.message}`, { detail: err.message });
-    }
-    throw err;
+    throw toAppError(err);
   }
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  // In chunks: spreading a whole multi-megabyte array into one call overflows the stack.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
 }

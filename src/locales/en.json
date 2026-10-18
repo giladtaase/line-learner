@@ -9,7 +9,7 @@
   "scripts": {
     "empty": "No scripts yet. Upload one to get started.",
     "upload": "Upload script",
-    "uploadHint": "Upload a .txt or .docx file, or paste your script below.",
+    "uploadHint": "Upload a .txt, .docx or .pdf file, or paste your script below. For PDFs, parsing with AI also lets it skip crossed-out text and editing notes.",
     "pasteLabel": "Or paste script text",
     "pastePlaceholder": "Paste your script here...",
     "titleLabel": "Script title",
@@ -32,7 +32,9 @@
     "useAiHint": "Better with messy scripts: title pages, cast lists, page numbers, unusual cue formats. The script's text is sent to Anthropic to be parsed.",
     "useAiNoKey": "Add an Anthropic API key in Settings to use this.",
     "parsingWithAi": "Parsing with AI… reading the script. A full play takes a few minutes.",
-    "parsingWithAiProgress": "Parsing with AI… {{percent}}% done"
+    "parsingWithAiProgress": "Parsing with AI… {{percent}}% done",
+    "readingPdf": "Reading the PDF…",
+    "readingPdfPage": "Reading the PDF… page {{page}} of {{pages}}"
   },
   "editor": {
     "title": "Review & correct",
@@ -49,6 +51,18 @@
     "moveDown": "Move down",
     "unsavedChanges": "You have unsaved changes. Leave without saving?",
     "chooseCharacterRequired": "Choose at least one character you play before saving."
+  },
+  "merge": {
+    "title": "Update scenes from a file",
+    "hint": "Got new versions of some scenes? Upload them (PDF, Word or text). Scenes are matched by number: those in the file replace the ones here, new ones are added in order, and the rest of the play stays as it is. You'll see what changes before anything is replaced.",
+    "noKey": "Add an Anthropic API key in Settings to update scenes from a file.",
+    "previewTitle": "This will change:",
+    "replace": "Replace {{removed}} with {{added}}",
+    "insert": "Add {{added}}",
+    "rows": "({{from}} rows → {{to}} rows)",
+    "newCharacters": "New characters in these scenes: {{names}}. If any is an existing character under another name, fix it in the rows below.",
+    "apply": "Replace scenes",
+    "applied": "Scenes updated. Check them below, then save."
   },
   "player": {
     "readthrough": "Full read-through",
@@ -116,6 +130,7 @@
   },
   "errors": {
     "noLinesDetected": "No lines could be detected in this script.",
+    "mergeNoScenes": "No numbered scene headings (like \"תמונה 9\" or \"Scene 3\") were found in this file, so there's nothing to match.",
     "fileInvalidJson": "This file is not valid JSON.",
     "fileNotAnExport": "This file was not recognized as a Line Learner script export.",
     "fileNewerVersion": "This script was exported by a newer version of the app and cannot be imported here.",

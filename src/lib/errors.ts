@@ -27,7 +27,8 @@ export type AppErrorCode =
   | 'aiRefused'
   | 'aiTooLong'
   | 'aiInvalidResponse'
-  | 'aiFailed';
+  | 'aiFailed'
+  | 'mergeNoScenes';
 
 export class AppError extends Error {
   constructor(

@@ -5,7 +5,9 @@ import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
 import { recomputeEntryCharacters, getMyCharacters } from '../lib/scriptParser';
 import { exportScript } from '../lib/scriptFile';
+import { applySceneMerge, planSceneMerge } from '../lib/sceneMerge';
 import { Button, IconButton } from './ui';
+import MergeScenesPanel from './MergeScenesPanel';
 import type { Script, ScriptEntry } from '../types';
 
 const ROW_BUTTON = 'text-xs border px-1.5 py-0.5 hover:bg-slate-50';
@@ -199,6 +201,13 @@ export default function ScriptEditorPage() {
           })}
         </div>
       </fieldset>
+
+      <MergeScenesPanel
+        entries={entries}
+        characters={characters}
+        // Planned again against the latest entries, in case they changed while the preview was open.
+        onApply={(update) => editEntries((prev) => applySceneMerge(prev, planSceneMerge(prev, update)))}
+      />
 
       <div className="space-y-2">
         {entries.map((entry, index) => (
