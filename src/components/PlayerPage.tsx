@@ -11,6 +11,7 @@ import {
   previousSceneStart,
   nextSceneStart
 } from '../lib/scenes';
+import { nextCueIndex } from '../lib/playback';
 import { usePlayback } from '../hooks/usePlayback';
 import { useSettings } from '../settings/context';
 import { Button, IconButton } from './ui';
@@ -76,6 +77,7 @@ export default function PlayerPage() {
   const sceneNumber = sceneNumberAt(starts, index);
   const prevScene = previousSceneStart(starts, index);
   const nextScene = nextSceneStart(starts, index);
+  const nextCue = nextCueIndex(entries, index, isMine);
 
   return (
     <div className="space-y-4">
@@ -155,6 +157,12 @@ export default function PlayerPage() {
         <Button onClick={playback.stop}>{t('player.stop')}</Button>
         <Button onClick={() => playback.jumpTo(index + 1)} disabled={index >= entries.length - 1}>
           {t('player.next')} ▶
+        </Button>
+        <Button
+          onClick={() => nextCue !== undefined && playback.jumpTo(nextCue)}
+          disabled={nextCue === undefined}
+        >
+          {t('player.skipToMyCue')} ⏭
         </Button>
       </div>
 

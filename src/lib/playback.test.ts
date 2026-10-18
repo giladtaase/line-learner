@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runPlayback } from './playback';
+import { nextCueIndex, runPlayback } from './playback';
 import type { ScriptEntry } from '../types';
 
 function line(id: string, character: string): ScriptEntry {
@@ -14,6 +14,35 @@ const entries: ScriptEntry[] = [
   line('me2', 'ME')
 ];
 const isMine = (e: ScriptEntry) => e.character === 'ME';
+
+describe('nextCueIndex', () => {
+  const direction = (id: string): ScriptEntry => ({ id, order: 0, type: 'direction', text: id });
+
+  it("jumps to the other character's line right before my next line", () => {
+    // a1, b1, [me1], a2, [me2]
+    expect(nextCueIndex(entries, 0, isMine)).toBe(1);
+    expect(nextCueIndex(entries, 2, isMine)).toBe(3);
+  });
+
+  it('moves on to the following cue when I am already on the cue', () => {
+    expect(nextCueIndex(entries, 1, isMine)).toBe(3);
+  });
+
+  it('skips stage directions between the cue and my line', () => {
+    const withDirection = [line('a1', 'A'), line('b1', 'B'), direction('d'), line('me1', 'ME')];
+    expect(nextCueIndex(withDirection, 0, isMine)).toBe(1);
+  });
+
+  it('falls back to the entry before my line when only directions precede it', () => {
+    const onlyDirections = [direction('d1'), direction('d2'), line('me1', 'ME')];
+    expect(nextCueIndex(onlyDirections, 0, isMine)).toBe(1);
+  });
+
+  it('returns undefined when no cue is ahead', () => {
+    expect(nextCueIndex(entries, 3, isMine)).toBeUndefined();
+    expect(nextCueIndex(entries, 4, isMine)).toBeUndefined();
+  });
+});
 
 describe('runPlayback', () => {
   it('performs other lines and pauses on my first line', async () => {

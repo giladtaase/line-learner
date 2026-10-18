@@ -19,6 +19,28 @@ export interface PlaybackOptions {
 }
 
 /**
+ * The cue for the user's next line after `from`: the last line someone else
+ * speaks before it, or (if only directions precede it) the entry right before
+ * it. Skips a next line whose cue would be `from` itself, so repeated use
+ * keeps moving forward. Undefined when there's no later cue.
+ */
+export function nextCueIndex(
+  entries: ScriptEntry[],
+  from: number,
+  isMine: (entry: ScriptEntry) => boolean
+): number | undefined {
+  for (let mine = from + 1; mine < entries.length; mine++) {
+    if (!isMine(entries[mine])) continue;
+    // Nothing between `from` and the first line of mine is mine, so any line here is a cue.
+    for (let k = mine - 1; k > from; k--) {
+      if (entries[k].type === 'line') return k;
+    }
+    if (mine - 1 > from) return mine - 1;
+  }
+  return undefined;
+}
+
+/**
  * Auto-plays a script from `startIndex`, performing other characters' lines
  * until it reaches one of the user's own lines (pauses there), the end of the
  * script, or cancellation.
