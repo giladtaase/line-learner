@@ -130,7 +130,7 @@ functions the web app calls, so pages don't know the difference:
 
 | Feature | Web | Android app |
 | --- | --- | --- |
-| Speaking other lines (`lib/tts.ts`) | `speechSynthesis` | Android text-to-speech (`@capacitor-community/text-to-speech`) |
+| Speaking other lines (`lib/tts.ts`) | `speechSynthesis` | Android text-to-speech, via the app's own plugin [TtsPlugin.java](android/app/src/main/java/com/line_learner/app/TtsPlugin.java), which picks an installed engine that speaks the script's language (Samsung's default engine has no Hebrew; Google's does) |
 | Free speech recognition (`lib/transcription.ts`) | Web Speech API | Android `SpeechRecognizer`, via the app's own plugin [SpeechPlugin.java](android/app/src/main/java/com/line_learner/app/SpeechPlugin.java), which keeps listening through pauses |
 | Share / Export (`lib/scriptFile.ts`) | Web Share or a download | File in the app cache + Android share sheet |
 | Back button | - | Closes a dialog, else goes back, else exits ([platform/initNative.ts](src/platform/initNative.ts)) |
@@ -138,9 +138,8 @@ functions the web app calls, so pages don't know the difference:
 `isNativeApp()` in [src/platform/native.ts](src/platform/native.ts) decides
 which one runs. Whisper recording and AI parsing work the same in both.
 
-Speech on Android uses the phone's Google speech services. For Hebrew,
-the Hebrew voice and recognition language may need to be added in the
-phone's settings.
+Speech recognition on Android uses the phone's Google speech services. Without
+an offline language pack it needs an internet connection.
 
 Every push to `master` also builds a debug APK in GitHub Actions
 ([android.yml](.github/workflows/android.yml)); download it from the run's
@@ -187,7 +186,7 @@ src/
     native.ts              # isNativeApp(): web or Android app
     initNative.ts          # Android-only setup (back button)
   types.ts
-android/                   # Android project (Capacitor), incl. SpeechPlugin.java
+android/                   # Android project (Capacitor), incl. SpeechPlugin and TtsPlugin
 ```
 
 Tests sit next to the code they cover (`*.test.ts` for `lib`, `*.test.tsx`

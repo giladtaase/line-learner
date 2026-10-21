@@ -1,3 +1,4 @@
+import { registerPlugin } from '@capacitor/core';
 import { isNativeApp } from '../platform/native';
 import type { Language } from '../types';
 
@@ -15,67 +16,27 @@ function pickVoice(language: Language): SpeechSynthesisVoice | undefined {
   );
 }
 
-// In the Android app, lines are spoken by Android's text-to-speech engine:
-// the WebView's speechSynthesis is unreliable and often has no voices.
-// The plugin never settles a speak() that stop() interrupted, so the pending
-// one is resolved here instead, as speechSynthesis does on the web.
-let resolveNativeSpeech: (() => void) | null = null;
-// Bumped by stopSpeaking(), so a line still loading the plugin when playback
-// is paused doesn't start speaking afterwards.
-let nativeStopCount = 0;
-
-// Android's engine starts asynchronously and rejects speak() with
-// UNAVAILABLE until it's ready, e.g. on the first line after app start.
-const NATIVE_START_RETRIES = 10;
-const NATIVE_START_RETRY_MS = 300;
-
-async function speakNative(text: string, language: Language, rate: number): Promise<void> {
-  const stopCount = nativeStopCount;
-  const { TextToSpeech } = await import('@capacitor-community/text-to-speech');
-  if (stopCount !== nativeStopCount) return;
-  // The new line interrupts the previous one natively; just settle its promise.
-  settleNativeSpeech();
-  await new Promise<void>((resolve) => {
-    const done = () => {
-      if (resolveNativeSpeech === done) resolveNativeSpeech = null;
-      resolve();
-    };
-    resolveNativeSpeech = done;
-    const attempt = (retriesLeft: number) => {
-      TextToSpeech.speak({ text, lang: bcp47(language), rate }).then(done, (err: unknown) => {
-        const unavailable = (err as { code?: string } | null)?.code === 'UNAVAILABLE';
-        if (unavailable && retriesLeft > 0 && resolveNativeSpeech === done) {
-          setTimeout(() => attempt(retriesLeft - 1), NATIVE_START_RETRY_MS);
-        } else {
-          // Like the web version, a line that can't be spoken (e.g. no voice
-          // for the language) is skipped rather than stopping playback.
-          done();
-        }
-      });
-    };
-    attempt(NATIVE_START_RETRIES);
-  });
+/**
+ * The app's own Android text-to-speech plugin
+ * (android/app/src/main/java/com/line_learner/app/TtsPlugin.java), used in
+ * the app instead of the WebView's unreliable speechSynthesis. It picks an
+ * installed engine that can speak the language (Samsung's default engine has
+ * no Hebrew, Google's does). speak() resolves when the line ends or is
+ * interrupted; it rejects when no engine can speak the language.
+ */
+export interface NativeTtsPlugin {
+  speak(options: { text: string; lang: string; rate: number }): Promise<void>;
+  stop(): Promise<void>;
 }
 
-/** Resolves the line being spoken, if any. Returns whether there was one. */
-function settleNativeSpeech(): boolean {
-  const resolve = resolveNativeSpeech;
-  if (!resolve) return false;
-  resolveNativeSpeech = null;
-  resolve();
-  return true;
-}
-
-function stopNativeSpeech(): void {
-  nativeStopCount++;
-  if (!settleNativeSpeech()) return;
-  import('@capacitor-community/text-to-speech')
-    .then(({ TextToSpeech }) => TextToSpeech.stop())
-    .catch(() => {});
-}
+const LineLearnerTts = registerPlugin<NativeTtsPlugin>('LineLearnerTts');
 
 export function speak(text: string, language: Language, rate = 1): Promise<void> {
-  if (isNativeApp()) return speakNative(text, language, rate);
+  if (isNativeApp()) {
+    // Like the web version, a line that can't be spoken (e.g. no voice for
+    // the language) is skipped rather than stopping playback.
+    return LineLearnerTts.speak({ text, lang: bcp47(language), rate }).catch(() => {});
+  }
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) {
       resolve();
@@ -95,7 +56,7 @@ export function speak(text: string, language: Language, rate = 1): Promise<void>
 
 export function stopSpeaking(): void {
   if (isNativeApp()) {
-    stopNativeSpeech();
+    LineLearnerTts.stop().catch(() => {});
     return;
   }
   if ('speechSynthesis' in window) {
@@ -105,7 +66,7 @@ export function stopSpeaking(): void {
 
 export function ensureVoicesLoaded(): Promise<void> {
   return new Promise((resolve) => {
-    // The Android engine has no voice list to wait for (see speakNative).
+    // The Android plugin starts its engines when it first speaks.
     if (isNativeApp() || !('speechSynthesis' in window)) {
       resolve();
       return;

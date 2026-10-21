@@ -128,7 +128,8 @@ public class SpeechPlugin extends Plugin {
 
     private void destroyRecognizer() {
         if (recognizer != null) {
-            recognizer.cancel();
+            // destroy() also stops listening; cancel() would log an error for a
+            // recognizer that already delivered its results.
             recognizer.destroy();
             recognizer = null;
         }
