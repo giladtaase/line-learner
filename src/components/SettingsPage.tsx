@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { isWebSpeechSupported } from '../lib/transcription';
+import { isNativeApp } from '../platform/native';
 import { useSettings } from '../settings/context';
 
 export default function SettingsPage() {
@@ -71,7 +72,9 @@ export default function SettingsPage() {
             className="border rounded px-2 py-1 w-full"
           >
             <option value="whisper">{t('settings.whisper')}</option>
-            <option value="webspeech">{t('settings.webspeech')}</option>
+            <option value="webspeech">
+              {t(isNativeApp() ? 'settings.webspeechNative' : 'settings.webspeech')}
+            </option>
           </select>
           {settings.transcriptionProvider === 'webspeech' && !isWebSpeechSupported() && (
             <p className="text-xs text-red-600 mt-1">{t('settings.webspeechUnsupported')}</p>

@@ -3,7 +3,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-  { ignores: ['dist', 'dev-dist', 'node_modules'] },
+  { ignores: ['dist', 'dev-dist', 'node_modules', 'android'] },
   ...tsPlugin.configs['flat/recommended'],
   {
     files: ['**/*.{ts,tsx}'],

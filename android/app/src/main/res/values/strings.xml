@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Line Learner</string>
+    <string name="title_activity_main">Line Learner</string>
+    <string name="package_name">com.line_learner.app</string>
+    <string name="custom_url_scheme">com.line_learner.app</string>
+</resources>

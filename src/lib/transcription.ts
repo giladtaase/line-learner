@@ -1,13 +1,17 @@
+import { registerPlugin } from '@capacitor/core';
+import { isNativeApp } from '../platform/native';
 import type { AppSettings, Language } from '../types';
 import { AppError } from './errors';
 
 /**
  * Provider-agnostic speech-to-text controller used to grade recorded lines.
- * Two implementations:
+ * Three implementations:
  *  - WhisperController: records audio with MediaRecorder, then sends the
  *    clip to OpenAI's Whisper API on stop().
  *  - WebSpeechController: uses the browser's built-in SpeechRecognition
  *    (free, Chrome/Safari only) for live transcription.
+ *  - NativeSpeechController: the free option in the Android app, whose
+ *    WebView has no SpeechRecognition. Uses Android's recognizer instead.
  */
 export interface TranscriptionController {
   start(): Promise<void>;
@@ -200,8 +204,10 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | undefin
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
+/** Whether the free built-in recognition (the 'webspeech' setting) can work
+ *  here. In the Android app it's checked when recording starts instead. */
 export function isWebSpeechSupported(): boolean {
-  return !!getSpeechRecognitionCtor();
+  return isNativeApp() || !!getSpeechRecognitionCtor();
 }
 
 export class WebSpeechController implements TranscriptionController {
@@ -320,12 +326,83 @@ export class WebSpeechController implements TranscriptionController {
   }
 }
 
+/**
+ * The app's own Android speech plugin
+ * (android/app/src/main/java/com/line_learner/app/SpeechPlugin.java). It keeps
+ * listening across pauses until stop(), which resolves with the transcript.
+ * Rejections carry a `code`: unavailable, permission, network, language,
+ * audio, cancelled, or error-N.
+ */
+export interface NativeSpeechPlugin {
+  start(options: { language: string }): Promise<void>;
+  stop(): Promise<{ transcript: string }>;
+  cancel(): Promise<void>;
+}
+
+const LineLearnerSpeech = registerPlugin<NativeSpeechPlugin>('LineLearnerSpeech');
+
+/** Maps a native plugin rejection to a user-facing error. */
+function nativeSpeechErrorFor(err: unknown): TranscriptionError {
+  const code = (err as { code?: string } | null)?.code ?? 'unknown';
+  switch (code) {
+    case 'unavailable':
+      return new TranscriptionError(
+        'speechUnavailableDevice',
+        "Speech recognition isn't available on this device."
+      );
+    case 'permission':
+      return new TranscriptionError('micBlocked', 'Microphone access was blocked.');
+    case 'audio':
+      return new TranscriptionError('noMicrophone', 'No microphone was found.');
+    case 'network':
+      return new TranscriptionError(
+        'speechNetwork',
+        'Speech recognition needs an internet connection.'
+      );
+    case 'language':
+      return new TranscriptionError(
+        'speechLanguageDevice',
+        "This device can't recognize speech in the script's language."
+      );
+    default:
+      return new TranscriptionError('speechError', `Speech recognition error: ${code}`, { code });
+  }
+}
+
+export class NativeSpeechController implements TranscriptionController {
+  constructor(
+    private language: Language,
+    private plugin: NativeSpeechPlugin = LineLearnerSpeech
+  ) {}
+
+  async start(): Promise<void> {
+    try {
+      await this.plugin.start({ language: this.language === 'he' ? 'he-IL' : 'en-US' });
+    } catch (err) {
+      throw nativeSpeechErrorFor(err);
+    }
+  }
+
+  async stop(): Promise<string> {
+    try {
+      const { transcript } = await this.plugin.stop();
+      return transcript;
+    } catch (err) {
+      throw nativeSpeechErrorFor(err);
+    }
+  }
+
+  cancel(): void {
+    this.plugin.cancel().catch(() => {});
+  }
+}
+
 export function createTranscriptionController(
   settings: AppSettings,
   language: Language
 ): TranscriptionController {
   if (settings.transcriptionProvider === 'webspeech') {
-    return new WebSpeechController(language);
+    return isNativeApp() ? new NativeSpeechController(language) : new WebSpeechController(language);
   }
   return new WhisperController(settings.openAiApiKey ?? '', language);
 }

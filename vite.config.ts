@@ -6,11 +6,14 @@ import { VitePWA } from 'vite-plugin-pwa';
 // custom domain, see public/CNAME), and from the root of the Android app.
 const base = '/';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base,
   plugins: [
     react(),
     VitePWA({
+      // `--mode native` builds the Android app, which ships its files inside
+      // the APK. A service worker there would only risk serving a stale build.
+      disable: mode === 'native',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
@@ -37,4 +40,4 @@ export default defineConfig({
       }
     })
   ]
-});
+}));

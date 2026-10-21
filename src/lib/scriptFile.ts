@@ -1,3 +1,4 @@
+import { isNativeApp } from '../platform/native';
 import type { Script, ScriptEntry, Language } from '../types';
 import { AppError } from './errors';
 
@@ -35,6 +36,13 @@ export function scriptToFile(script: Script): ScriptFile {
 
 export function serializeScriptFile(script: Script): string {
   return JSON.stringify(scriptToFile(script), null, 2);
+}
+
+/** `accept` for the import file picker. Android labels files saved from
+ *  WhatsApp and similar apps as generic binary data and would grey them out,
+ *  so the app also accepts that; parseScriptFile validates the content. */
+export function scriptFileAccept(): string {
+  return isNativeApp() ? '.json,application/octet-stream' : '.json';
 }
 
 export class ScriptFileParseError extends AppError {}
@@ -173,9 +181,37 @@ export async function shareScriptFile(script: Script): Promise<boolean> {
   }
 }
 
-/** Shares the script through the native share sheet where supported (mostly
- *  mobile), otherwise downloads it as a file. */
+/**
+ * In the Android app, where the WebView can neither download files nor share
+ * them with the Web Share API: writes the file to the app's cache and opens
+ * Android's share sheet with it.
+ */
+async function shareScriptFileNative(script: Script): Promise<void> {
+  const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([
+    import('@capacitor/filesystem'),
+    import('@capacitor/share')
+  ]);
+  const { uri } = await Filesystem.writeFile({
+    path: scriptFileName(script),
+    data: serializeScriptFile(script),
+    directory: Directory.Cache,
+    encoding: Encoding.UTF8
+  });
+  try {
+    await Share.share({ title: script.title, files: [uri] });
+  } catch (err) {
+    // Closing the share sheet without picking an app rejects; that's not an error.
+    if (!/cancel/i.test(err instanceof Error ? err.message : String(err))) throw err;
+  }
+}
+
+/** Shares the script through the native share sheet where supported (the
+ *  Android app and most mobile browsers), otherwise downloads it as a file. */
 export async function exportScript(script: Script): Promise<void> {
+  if (isNativeApp()) {
+    await shareScriptFileNative(script);
+    return;
+  }
   const shared = await shareScriptFile(script);
   if (!shared) downloadScriptFile(script);
 }

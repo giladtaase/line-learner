@@ -7,7 +7,12 @@ import { db } from '../lib/db';
 import { parseScript, getMyCharacters, type ParseResult } from '../lib/scriptParser';
 import { readScriptFile, SCRIPT_FILE_TYPES } from '../lib/readScriptFile';
 import { useSettings } from '../settings/context';
-import { exportScript, parseScriptFile, scriptFileToNewScript } from '../lib/scriptFile';
+import {
+  exportScript,
+  parseScriptFile,
+  scriptFileAccept,
+  scriptFileToNewScript
+} from '../lib/scriptFile';
 import { AppError } from '../lib/errors';
 import { useErrorMessage } from '../hooks/useErrorMessage';
 import { Button } from './ui';
@@ -194,7 +199,7 @@ export default function ScriptsListPage() {
         <input
           ref={importInputRef}
           type="file"
-          accept=".json"
+          accept={scriptFileAccept()}
           aria-label={t('scripts.importTitle')}
           onChange={handleImportFile}
           disabled={busy}

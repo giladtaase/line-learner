@@ -1,6 +1,7 @@
 # Line Learner
 
-A web app for actors to learn and rehearse their lines, in English and Hebrew.
+An app for actors to learn and rehearse their lines, in English and Hebrew,
+on the web, on mobile web, and as an Android app.
 Upload a script, pick your character, and run through the play: the app reads
 everyone else's lines aloud and pauses on yours so you can say (or type) them
 from memory. Grading is lenient, so small phrasing slips pass and real memory
@@ -8,8 +9,10 @@ gaps get flagged.
 
 **Live app:** https://line-learner.com
 
-Everything runs in the browser. There is no backend and no account, and your
-scripts and settings stay on your device in IndexedDB.
+Everything runs on your device. There is no backend and no account, and your
+scripts and settings stay on your device in IndexedDB. The website and the
+Android app keep separate libraries; move scripts between them with
+Share / Export and Import.
 
 ## Features
 
@@ -49,6 +52,8 @@ scripts and settings stay on your device in IndexedDB.
 - **Bilingual UI:** English and Hebrew, with automatic RTL layout.
 - **Installable PWA:** use "Add to Home Screen" on mobile to install it, and
   it works offline after the first load.
+- **Android app:** the same app, with Android's own speech engines, share
+  sheet and back button. See [Android app](#android-app).
 
 ## Script format tips
 
@@ -85,11 +90,12 @@ Anything it misreads can be fixed in the editor after upload.
 | Leniency | Similarity threshold (default 0.55). Lower it to be more forgiving |
 
 Speech recognition support varies by browser. Chrome, Edge, and Safari
-support the Web Speech API. Firefox does not, so use Whisper there.
+support the Web Speech API. Firefox does not, so use Whisper there. In the
+Android app, the free option ("Built-in") uses the phone's speech recognition.
 
 ## Development
 
-Requirements: Node.js 20+.
+Requirements: Node.js 22+.
 
 ```bash
 npm install
@@ -103,11 +109,49 @@ npm run preview    # serve the built app locally
 
 The microphone and PWA install only work on `localhost` or over HTTPS.
 
+### Android app
+
+The Android app is the same web code running in a Capacitor shell
+([capacitor.config.ts](capacitor.config.ts), project in [android/](android/)).
+It needs Android Studio (or a JDK 21 and the Android SDK).
+
+```bash
+npm run android:sync  # build the web app for Android and copy it into android/
+npm run android:open  # open the project in Android Studio
+npm run android:run   # build, install and launch on a device or emulator
+```
+
+`android:sync` builds with `--mode native`, which leaves out the PWA service
+worker. Run it after every web change you want in the app. To build an APK
+from the command line, run `./gradlew assembleDebug` in `android/`.
+
+A few things the Android WebView can't do are done natively, behind the same
+functions the web app calls, so pages don't know the difference:
+
+| Feature | Web | Android app |
+| --- | --- | --- |
+| Speaking other lines (`lib/tts.ts`) | `speechSynthesis` | Android text-to-speech (`@capacitor-community/text-to-speech`) |
+| Free speech recognition (`lib/transcription.ts`) | Web Speech API | Android `SpeechRecognizer`, via the app's own plugin [SpeechPlugin.java](android/app/src/main/java/com/line_learner/app/SpeechPlugin.java), which keeps listening through pauses |
+| Share / Export (`lib/scriptFile.ts`) | Web Share or a download | File in the app cache + Android share sheet |
+| Back button | - | Closes a dialog, else goes back, else exits ([platform/initNative.ts](src/platform/initNative.ts)) |
+
+`isNativeApp()` in [src/platform/native.ts](src/platform/native.ts) decides
+which one runs. Whisper recording and AI parsing work the same in both.
+
+Speech on Android uses the phone's Google speech services. For Hebrew,
+the Hebrew voice and recognition language may need to be added in the
+phone's settings.
+
+Every push to `master` also builds a debug APK in GitHub Actions
+([android.yml](.github/workflows/android.yml)); download it from the run's
+artifacts. App icons come from [assets/](assets/) via
+`npx @capacitor/assets generate --android`.
+
 ### Tech stack
 
 Vite, React 18, TypeScript, Tailwind CSS, Dexie (IndexedDB), i18next,
 react-router, mammoth (`.docx` parsing), pdf.js (`.pdf` text), the Anthropic
-SDK (optional AI parsing), and vite-plugin-pwa.
+SDK (optional AI parsing), vite-plugin-pwa, and Capacitor (Android app).
 
 ### Project layout
 
@@ -132,14 +176,18 @@ src/
     fuzzyMatch.ts          # normalization and similarity grading
     playback.ts            # auto-play loop
     scenes.ts              # scene navigation helpers
-    transcription.ts       # Web Speech / Whisper speech-to-text
+    transcription.ts       # Web Speech / Android / Whisper speech-to-text
     tts.ts                 # speech synthesis for other characters' lines
     scriptFile.ts          # .linelearner.json export/import format
     errors.ts              # AppError: user-facing errors with translatable codes
     db.ts                  # Dexie schema, settings defaults and migrations
   locales/                 # en.json, he.json
   test/                    # test setup and renderApp() helper
+  platform/
+    native.ts              # isNativeApp(): web or Android app
+    initNative.ts          # Android-only setup (back button)
   types.ts
+android/                   # Android project (Capacitor), incl. SpeechPlugin.java
 ```
 
 Tests sit next to the code they cover (`*.test.ts` for `lib`, `*.test.tsx`
