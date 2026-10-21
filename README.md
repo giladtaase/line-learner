@@ -6,7 +6,7 @@ everyone else's lines aloud and pauses on yours so you can say (or type) them
 from memory. Grading is lenient, so small phrasing slips pass and real memory
 gaps get flagged.
 
-**Live app:** https://giladtaase.github.io/line-learner/
+**Live app:** https://line-learner.com
 
 Everything runs in the browser. There is no backend and no account, and your
 scripts and settings stay on your device in IndexedDB.
@@ -93,7 +93,7 @@ Requirements: Node.js 20+.
 
 ```bash
 npm install
-npm run dev        # dev server at http://localhost:5173/line-learner/
+npm run dev        # dev server at http://localhost:5173/
 npm test           # run unit tests once (Vitest)
 npm run test:watch # tests in watch mode
 npm run lint       # ESLint
@@ -151,12 +151,12 @@ replaced by `fake-indexeddb` in tests. User-facing errors are thrown as
 
 Every push to `master` runs the GitHub Actions workflow in
 [.github/workflows/deploy.yml](.github/workflows/deploy.yml). It runs the
-tests, builds the app, and publishes `dist/` to GitHub Pages. The app is
-served under `/line-learner/`, which is set as `base` in
-[vite.config.ts](vite.config.ts). Because GitHub Pages has no server-side
-rewrites, [public/404.html](public/404.html) sends deep links back to the app
-root so React Router can restore them. If you fork the repo under a different
-name, update the base path in both files.
+tests, builds the app, and publishes `dist/` to GitHub Pages, which serves it
+at https://line-learner.com. The custom domain is set in this repo's Settings →
+Pages only (an Actions deploy doesn't use a `CNAME` file), so other projects
+under giladtaase.github.io keep their URLs. Because GitHub
+Pages has no server-side rewrites, [public/404.html](public/404.html) sends
+deep links back to the app root so React Router can restore them.
 
 ## Roadmap
 

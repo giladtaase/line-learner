@@ -2,11 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Served from https://<user>.github.io/line-learner/ on GitHub Pages, so all
-// asset/app URLs need that repo name as a base path. Locally (`npm run dev`)
-// Vite still serves from "/" regardless of this setting's effect on dev vs
-// build; this only affects the production build output.
-const base = '/line-learner/';
+// Served from the root of https://line-learner.com (GitHub Pages with a
+// custom domain, see public/CNAME), and from the root of the Android app.
+const base = '/';
 
 export default defineConfig({
   base,
